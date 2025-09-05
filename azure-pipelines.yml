@@ -15,7 +15,7 @@ variables:
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@onebranchTemplates
   parameters:
-    stages:
+    customStages:
     - stage: stage
       jobs:
       - job: job
