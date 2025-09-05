@@ -20,7 +20,7 @@ extends:
       jobs:
       - job: job
         pool:
-          type: windows
+          vmImage: 'windows-latest'
         variables:
         - name: ob_nugetPublishing_enabled
           value: true
