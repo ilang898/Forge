@@ -27,6 +27,25 @@ extends:
         - name: ob_outputDirectory
           value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
         steps:
+        
+        # ✅ Step 1: Validate connectivity to NuGet.org
+        - powershell: |
+            Write-Host "Checking connectivity to NuGet.org..."
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            try {
+                $response = Invoke-WebRequest -Uri "https://api.nuget.org/v3/index.json" -UseBasicParsing -TimeoutSec 15
+                if ($response.StatusCode -eq 200) {
+                    Write-Host "✅ Connectivity OK: Status $($response.StatusCode)"
+                } else {
+                    Write-Error "❌ Unexpected status code: $($response.StatusCode)"
+                    exit 1
+                }
+            } catch {
+                Write-Error "❌ Cannot reach NuGet.org. Error: $($_.Exception.Message)"
+                exit 1
+            }
+          displayName: "Validate NuGet.org Connectivity"
+
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
           inputs:
