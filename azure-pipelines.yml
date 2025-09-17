@@ -28,23 +28,20 @@ extends:
           value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
         steps:
         
-        # ✅ Step 1: Validate connectivity to NuGet.org
-        - powershell: |
-            Write-Host "Checking connectivity to NuGet.org..."
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            try {
-                $response = Invoke-WebRequest -Uri "https://api.nuget.org/v3/index.json" -UseBasicParsing -TimeoutSec 15
-                if ($response.StatusCode -eq 200) {
-                    Write-Host "✅ Connectivity OK: Status $($response.StatusCode)"
-                } else {
-                    Write-Error "❌ Unexpected status code: $($response.StatusCode)"
-                    exit 1
-                }
-            } catch {
-                Write-Error "❌ Cannot reach NuGet.org. Error: $($_.Exception.Message)"
-                exit 1
-            }
-          displayName: "Validate NuGet.org Connectivity"
+        # Make sure the OneBranch NuGet credential provider is available
+- powershell: |
+      -ExcludeVersion `
+      -OutputDirectory $env:TEMP `
+      -Source https://onebranch.pkgs.visualstudio.com/_packaging/Build%40Release/nuget/v3/index.json
+    Copy-Item `
+      -Path "$env:TEMP\Microsoft.OneBranch.Build.NugetCredentialProvider\tools\CredentialProvider.OneBranch.exe" `
+      -Destination $env:NUGET_CREDENTIALPROVIDERS_PATH -Force
+    Write-Host "NUGET_CREDENTIALPROVIDERS_PATH = $env:NUGET_CREDENTIALPROVIDERS_PATH"
+  displayName: "Install OneBranch NuGet Credential Provider"    $env:NUGET_CREDENTIALPROVIDERS_PATH = "$env:USERPROFILE\.nuget\plugins"
+    New-Item -ItemType Directory -Force -Path $env:NUGET_CREDENTIALPROVIDERS_PATH | Out-Null
+    Write-Host "Installing OneBranch NuGet Credential Provider..."
+    nuget.exe install Microsoft.OneBranch.Build.NugetCredentialProvider `
+
 
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
