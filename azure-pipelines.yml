@@ -1,6 +1,5 @@
 # Forge - OneBranch Governed Pipeline (Order Preserved)
 
-name: $(MAJOR).$(Date:yyyy).$(Date:MMdd).$(Rev:r)
 trigger:
   - master
 
@@ -27,6 +26,8 @@ variables:
   Configuration: 'Release'
   Platform: 'Any CPU'
   ForgeSln: '$(Build.SourcesDirectory)\Forge.sln'
+
+WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2022/vse2022:latest' # Docker image which is used to build the project https://aka.ms/obpipelines/containers
 
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@templates
