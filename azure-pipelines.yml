@@ -10,12 +10,12 @@ resources:
       ref: refs/heads/main
 
 parameters:
-  - name: 'debug'
-    displayName: 'Enable debug output'
+  - name: debug
+    displayName: Enable debug output
     type: boolean
     default: false
-  - name: 'PublishNugetPackages'
-    displayName: 'Publish Nuget Packages'
+  - name: PublishNugetPackages
+    displayName: Publish Nuget Packages
     type: boolean
     default: false
 
@@ -25,7 +25,6 @@ variables:
   Configuration: 'Release'
   Platform: 'Any CPU'
   ForgeSln: '$(Build.SourcesDirectory)\Forge.sln'
-  WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2019/vse2019:latest'
 
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@templates
@@ -39,11 +38,9 @@ extends:
       - stage: build
         jobs:
           - job: main
-            displayName: 'Forge Build and Publish'
+            displayName: Forge Build and Publish
             pool:
-              type: windows
-              container:
-                image: $(WindowsContainerImage)
+              vmImage: 'windows-latest'
             variables:
               ob_outputDirectory: '$(OUTPUTROOT)'
               ob_nugetPublishing_enabled: ${{ parameters.PublishNugetPackages }}
@@ -51,13 +48,13 @@ extends:
             steps:
               # 1. NuGet Restore
               - task: NuGetCommand@2
-                displayName: 'NuGet restore'
+                displayName: NuGet restore
                 inputs:
                   restoreSolution: '$(ForgeSln)'
 
               # 2. Build .NET sln for tests
               - task: VSBuild@1
-                displayName: 'Build .NET sln for tests'
+                displayName: Build .NET sln for tests
                 inputs:
                   solution: '$(ForgeSln)'
                   platform: 'Any CPU'
@@ -65,7 +62,7 @@ extends:
 
               # 3. Run Tests
               - task: VSTest@2
-                displayName: 'Run Tests'
+                displayName: Run Tests
                 inputs:
                   testAssemblyVer2: |
                     $(Build.SourcesDirectory)\Forge.TreeWalker.UnitTests\obj\Release\Microsoft.Forge.TreeWalker.UnitTests.dll
@@ -73,7 +70,7 @@ extends:
 
               # 4. Build .NET sln and pack
               - task: VSBuild@1
-                displayName: 'Build .NET sln and pack'
+                displayName: Build .NET sln and pack
                 inputs:
                   solution: '$(ForgeSln)'
                   platform: 'Any CPU'
@@ -82,21 +79,21 @@ extends:
 
               # 5. Install .NET SDK
               - task: UseDotNet@2
-                displayName: 'Install .NET SDK'
+                displayName: Install .NET SDK
                 inputs:
                   packageType: 'sdk'
                   version: '6.0.100'
 
               # 6. Install .NET Runtime
               - task: UseDotNet@2
-                displayName: 'Install .NET Runtime'
+                displayName: Install .NET Runtime
                 inputs:
                   packageType: 'runtime'
                   version: '2.1.23'
 
               # 7. ESRP CodeSigning - Authenticode MI
               - task: EsrpCodeSigning@5
-                displayName: 'ESRP CodeSigning - Authenticode MI'
+                displayName: ESRP CodeSigning - Authenticode MI
                 inputs:
                   ConnectedServiceName: 'ForgeManagedIdentity'
                   UseMSIAuthentication: true
@@ -138,7 +135,7 @@ extends:
 
               # 8. ESRP CodeSigning - NuGet MI
               - task: EsrpCodeSigning@5
-                displayName: 'ESRP CodeSigning - NuGet MI'
+                displayName: ESRP CodeSigning - NuGet MI
                 inputs:
                   ConnectedServiceName: 'ForgeManagedIdentity'
                   UseMSIAuthentication: true
@@ -174,7 +171,7 @@ extends:
 
               # 9. NuGet push AzureArtifacts
               - task: NuGetCommand@2
-                displayName: 'NuGet push AzureArtifacts'
+                displayName: NuGet push AzureArtifacts
                 inputs:
                   command: push
                   packagesToPush: '$(Build.SourcesDirectory)\Forge.TreeWalker\bin\Release\Microsoft.Forge.TreeWalker*.symbols.nupkg'
