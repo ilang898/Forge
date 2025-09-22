@@ -1,4 +1,3 @@
-# Forge - OneBranch Governed Pipeline (Order Preserved)
 
 trigger:
   - master
@@ -26,8 +25,7 @@ variables:
   Configuration: 'Release'
   Platform: 'Any CPU'
   ForgeSln: '$(Build.SourcesDirectory)\Forge.sln'
-
-WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2022/vse2022:latest' # Docker image which is used to build the project https://aka.ms/obpipelines/containers
+  WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2022/vse2022:latest'
 
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@templates
@@ -37,12 +35,23 @@ extends:
         - name: One/ForgeArtifacts
       files_to_publish: '**/*.nupkg;!**/*.symbols.nupkg'
       continueOnConflict: false
+    tsa:
+      enabled: false
+    binskim:
+      break: true
+    policheck:
+      break: true
+    roslyn:
+      break: true
     stages:
       - stage: build
         jobs:
           - job: main
+            displayName: 'Forge Build and Publish'
             pool:
               type: windows
+              container:
+                image: $(WindowsContainerImage)
             variables:
               ob_outputDirectory: '$(OUTPUTROOT)'
               ob_nugetPublishing_enabled: ${{ parameters.PublishNugetPackages }}
