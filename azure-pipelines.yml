@@ -25,7 +25,7 @@ variables:
   Configuration: 'Release'
   Platform: 'Any CPU'
   ForgeSln: '$(Build.SourcesDirectory)\Forge.sln'
-  WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2022/vse2022:latest'
+  WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2019/vse2019:latest'
 
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@templates
