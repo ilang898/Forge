@@ -35,14 +35,6 @@ extends:
         - name: One/ForgeArtifacts
       files_to_publish: '**/*.nupkg;!**/*.symbols.nupkg'
       continueOnConflict: false
-    tsa:
-      enabled: false
-    binskim:
-      break: true
-    policheck:
-      break: true
-    roslyn:
-      break: true
     stages:
       - stage: build
         jobs:
