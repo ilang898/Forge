@@ -49,6 +49,11 @@ extends:
               ob_nugetPublishing_enabled: ${{ parameters.PublishNugetPackages }}
               ob_nugetPublishingDir: packages
             steps:
+              - task: UseDotNet@2
+                displayName: 'Install .NET SDK from global.json'
+                inputs:
+                  packageType: 'sdk'
+                  useGlobalJson: true
               # 1. NuGet Restore
               - task: NuGetCommand@2
                 displayName: 'NuGet restore'
