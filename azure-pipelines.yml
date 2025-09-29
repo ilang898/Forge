@@ -7,20 +7,19 @@ resources:
     type: git
     name: OneBranch.Pipelines/GovernedTemplates
     ref: refs/heads/main
-
     
 variables:
-  WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2019/vse2022:latest' # Docker image which is used to build the project https://aka.ms/obpipelines/containers
+  WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2022/vse2022:latest' # Docker image which is used to build the project https://aka.ms/obpipelines/containers
 
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@onebranchTemplates
   parameters:
-    customStages:
+    stages:
     - stage: stage
       jobs:
       - job: job
         pool:
-          vmImage: 'windows-latest'
+          type: windows
         variables:
         - name: ob_nugetPublishing_enabled
           value: true
