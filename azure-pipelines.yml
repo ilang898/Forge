@@ -1,5 +1,5 @@
 trigger:
-- master   # Manual trigger for testing
+- master   # Manual trigger for test
 
 resources:
   repositories:
@@ -12,26 +12,27 @@ extends:
   template: v2/OneBranch.Official.CrossPlat.yml@templates
   parameters:
     stages:
-    - stage: Build
+    - stage: build
       jobs:
-      - job: TestNuGetConnectivity
+      - job: main
         pool:
           vmImage: 'windows-2019'
-        steps:
-        - powershell: |
-            Write-Host "Testing connectivity to NuGet.org..."
-            try {
-              $resp = Invoke-WebRequest -Uri "https://api.nuget.org/v3/index.json" -UseBasicParsing
-              Write-Host "NuGet.org is reachable."
-            } catch {
-              Write-Host "NuGet.org is NOT reachable."
-              Write-Host $_
-              exit 1
-            }
-          displayName: "Test NuGet.org connectivity"
-        - task: NuGetToolInstaller@1
-          displayName: "Install NuGet"
-        - task: NuGetCommand@2
-          displayName: "NuGet Restore"
-          inputs:
-            restoreSolution: '**/*.sln'
+        templateContext:
+          steps:
+          - powershell: |
+              Write-Host "Testing connectivity to NuGet.org..."
+              try {
+                $resp = Invoke-WebRequest -Uri "https://api.nuget.org/v3/index.json" -UseBasicParsing
+                Write-Host "NuGet.org is reachable."
+              } catch {
+                Write-Host "NuGet.org is NOT reachable."
+                Write-Host $_
+                exit 1
+              }
+            displayName: "Test NuGet.org connectivity"
+          - task: NuGetToolInstaller@1
+            displayName: "Install NuGet"
+          - task: NuGetCommand@2
+            displayName: "NuGet Restore"
+            inputs:
+              restoreSolution: '**/*.sln'
