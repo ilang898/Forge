@@ -76,7 +76,7 @@ variables:
   parameters:
     nugetPublishing:
         feeds:
-        - name: One/Azure-Compute-Collective-Publish
+        - name: One/ForgeArtifacts
           files_to_publish: '**/*.nupkg;!**/*.symbols.nupkg'
           continueOnConflict: false 
     featureFlags:
