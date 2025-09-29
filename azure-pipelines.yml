@@ -10,7 +10,7 @@ resources:
 
     
 variables:
-  WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2019/vse2022:latest' # Docker image which is used to build the project https://aka.ms/obpipelines/containers
+  WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2019/vse2019:latest' # Docker image which is used to build the project https://aka.ms/obpipelines/containers
 
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@onebranchTemplates
@@ -28,6 +28,7 @@ extends:
           value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
         steps:
         - powershell: |
+              [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
               Write-Host "Testing connectivity to NuGet.org..."
               try {
                 $resp = Invoke-WebRequest -Uri "https://api.nuget.org/v3/index.json" -UseBasicParsing
