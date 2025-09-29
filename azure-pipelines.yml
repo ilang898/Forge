@@ -1,5 +1,5 @@
 trigger:
-- master   # Manual trigger for test
+- master
 
 resources:
   repositories:
@@ -11,28 +11,15 @@ resources:
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@templates
   parameters:
-    stages:
-    - stage: build
-      jobs:
-      - job: main
-        pool:
-          vmImage: 'windows-2019'
-        templateContext:
-          steps:
-          - powershell: |
-              Write-Host "Testing connectivity to NuGet.org..."
-              try {
-                $resp = Invoke-WebRequest -Uri "https://api.nuget.org/v3/index.json" -UseBasicParsing
-                Write-Host "NuGet.org is reachable."
-              } catch {
-                Write-Host "NuGet.org is NOT reachable."
-                Write-Host $_
-                exit 1
-              }
-            displayName: "Test NuGet.org connectivity"
-          - task: NuGetToolInstaller@1
-            displayName: "Install NuGet"
-          - task: NuGetCommand@2
-            displayName: "NuGet Restore"
-            inputs:
-              restoreSolution: '**/*.sln'
+    pool:
+      type: windows
+      vmImage: 'windows-2019'
+    customSteps:
+      - script: echo "Hello from OneBranch custom steps!"
+        displayName: "Greeting"
+      - task: NuGetToolInstaller@1
+        displayName: "Install NuGet"
+      - task: NuGetCommand@2
+        displayName: "NuGet Restore"
+        inputs:
+          restoreSolution: '**/*.sln'
