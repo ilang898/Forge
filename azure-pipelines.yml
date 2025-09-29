@@ -2,7 +2,7 @@ trigger:
 - master
 
 resources:
-  repositories: 
+  repositories:
     - repository: templates
       type: git
       name: OneBranch.Pipelines/GovernedTemplates
@@ -11,12 +11,12 @@ resources:
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@templates
   parameters:
-    stages:
-    - stage: build
-      jobs:
-      - job: main
-        displayName: 'Forge Build and Publish'
-        pool:
-          type: windows
-        steps:
-        - script: echo "Build steps go here"
+    jobs:
+    - job: main
+      displayName: 'Forge Build and Publish'
+      pool:
+        type: windows   # or linux
+      variables:
+        ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
+      steps:
+      - script: echo "Build steps go here"
