@@ -27,6 +27,17 @@ extends:
         - name: ob_outputDirectory
           value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
         steps:
+        - powershell: |
+              Write-Host "Testing connectivity to NuGet.org..."
+              try {
+                $resp = Invoke-WebRequest -Uri "https://api.nuget.org/v3/index.json" -UseBasicParsing
+                Write-Host "NuGet.org is reachable."
+              } catch {
+                Write-Host "NuGet.org is NOT reachable."
+                Write-Host $_
+                exit 1
+              }
+            displayName: "Test NuGet.org connectivity"
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
           inputs:
