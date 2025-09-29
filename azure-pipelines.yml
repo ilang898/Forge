@@ -77,7 +77,7 @@ extends:
   parameters:
     featureFlags:
       EnableCDPxPAT: false
-    WindowsHostVersion: '1ESWindows2022'
+      WindowsHostVersion: '1ESWindows2022'
     cloudvault:
       enabled: true
     globalSdl:
