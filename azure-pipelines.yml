@@ -11,12 +11,10 @@ resources:
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@templates
   parameters:
-    jobs:
-    - job: main
-      displayName: 'Forge Build and Publish'
-      pool:
-        type: windows   # or linux
-      variables:
-        ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
-      steps:
+    pool:
+      type: windows   # or linux
+    variables:
+      ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
+    customSteps:
       - script: echo "Build steps go here"
+        displayName: "Forge Build and Publish"
