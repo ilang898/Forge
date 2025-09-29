@@ -3,23 +3,31 @@ trigger:
 
 resources:
   repositories:
-    - repository: templates
-      type: git
-      name: OneBranch.Pipelines/GovernedTemplates
-      ref: refs/heads/main
+  - repository: onebranchTemplates
+    type: git
+    name: OneBranch.Pipelines/GovernedTemplates
+    ref: refs/heads/main
+
+    
+variables:
+  WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2019/vse2022:latest' # Docker image which is used to build the project https://aka.ms/obpipelines/containers
 
 extends:
-  template: v2/OneBranch.Official.CrossPlat.yml@templates
+  template: v2/OneBranch.Official.CrossPlat.yml@onebranchTemplates
   parameters:
-    pool:
-      type: windows
-      vmImage: 'windows-2019'
-    customSteps:
-      - script: echo "Hello from OneBranch custom steps!"
-        displayName: "Greeting"
-      - task: NuGetToolInstaller@1
-        displayName: "Install NuGet"
-      - task: NuGetCommand@2
-        displayName: "NuGet Restore"
-        inputs:
-          restoreSolution: '**/*.sln'
+    customStages:
+    - stage: stage
+      jobs:
+      - job: job
+        pool:
+          vmImage: 'windows-latest'
+        variables:
+        - name: ob_nugetPublishing_enabled
+          value: true
+        - name: ob_outputDirectory
+          value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
+        steps:
+        - task: NuGetCommand@2
+          displayName: 'NuGet restore'
+          inputs:
+            restoreSolution: '$(Build.SourcesDirectory)\Forge.sln'
