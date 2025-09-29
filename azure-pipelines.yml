@@ -1,95 +1,26 @@
-
-#################################################################################
-#                      OneBranch Pipelines - Official Build                     #
-# Documentation:  https://aka.ms/obpipelines                                    #
-# Yaml Schema:    https://aka.ms/obpipelines/yaml/schema                        #
-# Retail Tasks:   https://aka.ms/obpipelines/tasks                              #
-# Support:        https://aka.ms/onebranchsup                                   #
-#################################################################################
-
-name: $(MAJOR).$(Date:yyyy).$(Date:MMdd).$(Rev:r)
-
 trigger:
-- main  # Change to 'master' if your repo default branch is master
+- master
 
-resources:
-  repositories:
-    - repository: templates
-      type: git
-      name: OneBranch.Pipelines/GovernedTemplates
-      ref: refs/heads/main
+pool:
+  vmImage: 'windows-latest'
 
-parameters:
-  default: true
-- name: PublishNugetPackages
-  displayName: Publish NuGet Packages
-  type: boolean
-  default: true
+steps:
+- powershell: |
+    Write-Host "Testing connectivity to NuGet.org..."
+    try {
+      $resp = Invoke-WebRequest -Uri "https://api.nuget.org/v3/index.json" -UseBasicParsing
+      Write-Host "NuGet.org is reachable."
+    } catch {
+      Write-Host "NuGet.org is NOT reachable."
+      Write-Host $_
+      exit 1
+    }
+  displayName: "Test NuGet.org connectivity"
 
-variables:
-  CDP_DEFINITION_BUILD_COUNT: $[counter('', 0)]
-  system.debug: ${{ parameters.debug }}
-  ENABLE_PRS_DELAYSIGN: 0
-  OUTPUTROOT: $(Build.SourcesDirectory)\out
-  NUGET_XMLDOC_MODE: none
-  MAJOR: 133
-  MINOR: $[format('{0:yyyy}', pipeline.startTime)]
-  REVISION: $[counter(variables['MINOR'], 1)]
-  Configuration: 'Release'
-  Platform: 'x64'
-  WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2019/vse2019:latest'
-  ForgeSln: '$(Build.SourcesDirectory)\Forge.sln'
+- task: NuGetToolInstaller@1
+  displayName: "Install NuGet"
 
-extends:
-  template: v2/OneBranch.Official.CrossPlat.yml@templates
-  parameters:
-    featureFlags:
-      EnableCDPxPAT: false
-      WindowsHostVersion: '1ESWindows2019'
-    cloudvault:
-      enabled: true
-    globalSdl:
-      tsa:
-        enabled: false
-      binskim:
-        break: true
-      policheck:
-        break: true
-      roslyn:
-        break: true
-    nugetPublishing:
-      feeds:
-        - name: One/ForgeArtifacts
-          files_to_publish: '**/*.nupkg;!**/*.symbols.nupkg'
-          continueOnConflict: false
-    stages:
-    - stage: build
-      templateContext:
-        dialtoneEnabled: false
-      jobs:
-      - job: main
-        pool:
-          type: windows
-          vmImage: 'windows-2019'
-        variables:
-          ob_vsodrop_enabled: true
-          ob_vsodrop_adoInstance: msazure
-          ob_vsodrop_subfolder: ''
-          ob_outputDirectory: '$(OUTPUTROOT)'
-          ob_sdl_binskim_break: true
-          ob_nugetPublishing_enabled: ${{ parameters.PublishNugetPackages }}
-          ob_nugetPublishingDir: packages
-        templateContext:
-          dialtoneEnabled: false
-        steps:
-        - task: MSBuild@1
-          displayName: 'Restore Forge.sln'
-          inputs:
-            solution: '$(ForgeSln)'
-            msbuildLocationMethod: 'version'
-            msbuildVersion: 'latest'
-            platform: $(Platform)
-            configuration: $(Configuration)
-            msbuildArguments: '/t:Restore'
-            maximumCpuCount: true
-            logProjectEvents: true
+- task: NuGetCommand@2
+  displayName: "NuGet Restore"
+  inputs:
+    restoreSolution: '**/*.sln'
