@@ -37,7 +37,7 @@ extends:
                 Write-Host $_
                 exit 1
               }
-            displayName: "Test NuGet.org connectivity"
+          displayName: "Test NuGet.org connectivity"
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
           inputs:
