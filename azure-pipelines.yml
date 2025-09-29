@@ -2,36 +2,106 @@ trigger:
 - master
 
 resources:
+  
+# OneBranch Pipelines - Official Build (Forge)
+# Modeled after Anvil & Kyber governed pipelines
+
   repositories:
-    - repository: onebranchTemplates
+    - repository: templates
       type: git
       name: OneBranch.Pipelines/GovernedTemplates
       ref: refs/heads/main
 
+# Queue-time parameters similar to Anvil/Kyber for parity / future dialtone use
+parameters:
+- name: debug
+  displayName: Enable debug output
+  type: boolean
+  default: false
+- name: PublishNugetPackages
+  displayName: Publish NuGet packages
+  type: boolean
+  default: true
+
+variables:
+  # Versioning + common variables
+  CDP_DEFINITION_BUILD_COUNT: $[counter('', 0)]  # used by onebranch.pipeline.version
+  system.debug: ${{ parameters.debug }}
+  OUTPUTROOT: $(Build.SourcesDirectory)\out
+  NUGET_XMLDOC_MODE: none
+  MAJOR: 133
+  MINOR: $[format('{0:yyyy}', pipeline.startTime)]
+  REVISION: $[counter(variables['MINOR'], 1)]
+  Configuration: 'Release'
+  Platform: 'x64'
+  WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2019/vse2022:latest'  # your chosen Windows image
+
+  # Forge solution (update paths if different)
+  ForgeSln: '$(Build.SourcesDirectory)\Forge.sln'
+
 extends:
-  template: v2/OneBranch.Official.CrossPlat.yml@onebranchTemplates
+  template: v2/OneBranch.Official.CrossPlat.yml@templates   # governed template
   parameters:
-    pool:
-      type: windows   # Windows build environment
-    variables:
-      ob_outputDirectory: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
-      ob_nugetPublishing_enabled: true
-      WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2019/vse2022:latest'
+    # Host pool + features consistent with Anvil/Kyber
+    WindowsHostVersion: '1ESWindows2022'
+    cloudvault:
+      enabled: true
+
+    # SDL enforcement parity with Anvil/Kyber (break on key issues)
+    globalSdl:
+      tsa:
+        enabled: false             # enable when TSAOptions.json is ready
+      binskim:
+        break: true
+      policheck:
+        break: true
+      roslyn:
+        break: true
+
+    # NuGet publishing (your feed)
     nugetPublishing:
       feeds:
         - name: ForgeArtifacts
+          files_to_publish: '**/*.nupkg;!**/*.symbols.nupkg'
           continueOnConflict: true
-          files_to_publish: '*.nupkg;!*.symbols.nupkg'
+    # Optional tags to help with migration traceability
     customTags: 'ES365AIMigrationTooling'
-    customSteps:
-      - task: NuGetCommand@2
-        displayName: 'NuGet restore'
-        inputs:
-          restoreSolution: '$(Build.SourcesDirectory)\Forge.sln'
 
-      - task: VSBuild@1
-        displayName: 'Build .NET solution'
-        inputs:
-          solution: '$(Build.SourcesDirectory)\Forge.sln'
-          platform: 'Any CPU'
-          configuration: 'Release'
+    # The governed template supports passing stages/jobs/steps (as in Anvil/Kyber)
+    stages:
+    - stage: build
+      jobs:
+      - job: main
+        pool:
+          type: windows
+        variables:
+          ob_outputDirectory: '$(OUTPUTROOT)'      # REQUIRED for governed artifact publish
+          ob_nugetPublishing_enabled: ${{ parameters.PublishNugetPackages }}
+          ob_nugetPublishingDir: packages         # packages will be put under $(OUTPUTROOT)\packages
+
+        steps:
+        - task: UseDotNet@2
+          continueOnError: true
+          inputs:
+            packageType: 'sdk'
+            useGlobalJson: true
+            performMultiLevelLookup: true
+
+        - task: onebranch.pipeline.version@1
+          displayName: 'Setup BuildNumber'
+          inputs:
+            exclude_commit: true
+            system: 'AdoBuildNumber'
+
+        # Restore solution (Anvil/Kyber pattern uses MSBuild /t:Restore)
+        - task: MSBuild@1
+          displayName: 'Restore Forge.sln'
+          inputs:
+            solution: '$(ForgeSln)'
+            msbuildLocationMethod: 'version'
+            msbuildVersion: 'latest'
+            platform: $(Platform)
+            configuration: $(Configuration)
+            msbuildArguments: '/t:Restore'
+            maximumCpuCount: true
+            logProjectEvents: true
