@@ -3,18 +3,35 @@ trigger:
 
 resources:
   repositories:
-    - repository: templates
+    - repository: onebranchTemplates
       type: git
       name: OneBranch.Pipelines/GovernedTemplates
       ref: refs/heads/main
 
 extends:
-  template: v2/OneBranch.Official.CrossPlat.yml@templates
+  template: v2/OneBranch.Official.CrossPlat.yml@onebranchTemplates
   parameters:
     pool:
-      type: windows   # or linux
+      type: windows   # Windows build environment
     variables:
-      ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
+      ob_outputDirectory: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
+      ob_nugetPublishing_enabled: true
+      WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2019/vse2022:latest'
+    nugetPublishing:
+      feeds:
+        - name: ForgeArtifacts
+          continueOnConflict: true
+          files_to_publish: '*.nupkg;!*.symbols.nupkg'
+    customTags: 'ES365AIMigrationTooling'
     customSteps:
-      - script: echo "Build steps go here"
-        displayName: "Forge Build and Publish"
+      - task: NuGetCommand@2
+        displayName: 'NuGet restore'
+        inputs:
+          restoreSolution: '$(Build.SourcesDirectory)\Forge.sln'
+
+      - task: VSBuild@1
+        displayName: 'Build .NET solution'
+        inputs:
+          solution: '$(Build.SourcesDirectory)\Forge.sln'
+          platform: 'Any CPU'
+          configuration: 'Release'
