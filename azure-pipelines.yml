@@ -7,12 +7,16 @@ resources:
       type: git
       name: OneBranch.Pipelines/GovernedTemplates
       ref: refs/heads/main
+
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@templates
   parameters:
-    image: windows-latest
     stages:
     - stage: build
       jobs:
-        - job: main
-          displayName: 'Forge Build and Publish'
+      - job: main
+        displayName: 'Forge Build and Publish'
+        pool:
+          type: windows
+        steps:
+        - script: echo "Build steps go here"
