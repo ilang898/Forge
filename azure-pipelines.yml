@@ -91,7 +91,7 @@ extends:
         break: true
     nugetPublishing:
       feeds:
-        - name: One/ForgeArtifacts
+        - name: One/Azure-Compute-Collective-Publish
           files_to_publish: '**/*.nupkg;!**/*.symbols.nupkg'
           continueOnConflict: false
     stages:
