@@ -113,9 +113,7 @@ extends:
         templateContext:
           dialtoneEnabled: false
         steps:
-        - task: UseDotNet@2
-          continueOnError: true
+        - task: NuGetCommand@2
+          displayName: 'NuGet restore'
           inputs:
-            packageType: 'sdk'
-            useGlobalJson: true
-            performMultiLevelLookup: true
+            restoreSolution: '$(Build.SourcesDirectory)\Forge.sln'
