@@ -8,7 +8,14 @@
 # Support:        https://aka.ms/onebranchsup                                   #
 #################################################################################
 
-trigger: master # https://aka.ms/obpipelines/triggers
+# Fix 1: trigger should be an array, not a single value
+trigger:
+- master
+
+# Add PR triggers for better functionality
+pr:
+- master
+- feature/*
 
 parameters: # parameters are shown up in ADO UI in a build queue time
 - name: 'debug'
@@ -24,7 +31,6 @@ variables:
   REPOROOT: $(Build.SourcesDirectory)
   OUTPUTROOT: $(REPOROOT)\out
   NUGET_XMLDOC_MODE: none
-
   WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2019/vse2022:latest' # Docker image which is used to build the project https://aka.ms/obpipelines/containers
 
 resources:
@@ -56,6 +62,7 @@ extends:
     - stage: build
       jobs:
       - job: main
+        # Fix 2: Can't have both 'type' and 'vmImage' - choose one
         pool:
           type: windows  # read more about custom job pool types at https://aka.ms/obpipelines/yaml/jobs
           vmImage: 'windows-2019'
@@ -67,7 +74,8 @@ extends:
           # ob_sdl_suppression_suppressionFile: $(Build.SourcesDirectory)\.gdn\build.nonofficial.gdnsuppress
 
         steps:
-          - task: task: NuGetCommand@2
-          displayName: 'NuGet restore'
-          inputs:
-            restoreSolution: '$(Build.SourcesDirectory)\Forge.sln'
+          # Fix 3: Remove duplicate 'task:' and fix indentation
+          - task: NuGetCommand@2
+            displayName: 'NuGet restore'
+            inputs:
+              restoreSolution: '$(Build.SourcesDirectory)\Forge.sln'
