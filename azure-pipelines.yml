@@ -23,6 +23,8 @@ extends:
     - stage: stage
       jobs:
       - job: job
+        pool:
+          type: windows
         variables:
         - name: ob_nugetPublishing_enabled
           value: true
