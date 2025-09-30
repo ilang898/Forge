@@ -31,41 +31,61 @@ extends:
         - name: ob_outputDirectory
           value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
         steps:
+        # Install .NET SDK FIRST - before any restore operations
+        - task: UseDotNet@2
+          displayName: 'Install .NET 6.0 SDK'
+          inputs:
+            packageType: 'sdk'
+            version: '6.0.100'
+            
+        - task: UseDotNet@2
+          displayName: 'Install .NET 2.1 Runtime'
+          inputs:
+            packageType: 'runtime'
+            version: '2.1.23'
+
         - powershell: |
+              # Verify .NET installation
+              Write-Host "=== .NET SDK Information ==="
+              try {
+                $dotnetVersion = dotnet --version
+                Write-Host ".NET SDK Version: $dotnetVersion"
+                dotnet --list-sdks
+                dotnet --list-runtimes
+              } catch {
+                Write-Host "Error checking .NET installation: $_"
+              }
+              
+              Write-Host "`n=== Environment Variables ==="
+              Write-Host "PATH: $env:PATH"
+              Write-Host "DOTNET_ROOT: $env:DOTNET_ROOT"
+              
               # Enhanced TLS configuration for OneBranch containers
               [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
               [Net.ServicePointManager]::CheckCertificateRevocationList = $false
               [Net.ServicePointManager]::DefaultConnectionLimit = 100
               
-              Write-Host "Enhanced TLS configuration applied"
-              Write-Host "Testing connectivity to NuGet.org with enhanced settings..."
-              
+              Write-Host "`n=== Testing NuGet.org Connectivity ==="
               try {
-                # Try with custom headers that work better in container environments
                 $headers = @{
                   'User-Agent' = 'NuGet Command Line/6.0.0 (Microsoft Windows NT 10.0.17763.0)'
                 }
                 $resp = Invoke-WebRequest -Uri "https://api.nuget.org/v3/index.json" -UseBasicParsing -Headers $headers -TimeoutSec 30
-                Write-Host "NuGet.org is reachable with enhanced settings."
-                Write-Host "Response status: $($resp.StatusCode)"
+                Write-Host "NuGet.org is reachable. Status: $($resp.StatusCode)"
               } catch {
-                Write-Host "NuGet.org is still NOT reachable with enhanced settings."
-                Write-Host "Error: $_"
-                Write-Host "Will proceed with NuGet restore using fallback methods..."
-                # Don't exit - let NuGet restore handle retries
+                Write-Host "NuGet.org connectivity issue: $_"
               }
-          displayName: "Test NuGet.org connectivity with enhanced TLS"
+          displayName: "Verify .NET SDK and test connectivity"
 
         - task: NuGetCommand@2
-          displayName: 'NuGet restore with enhanced configuration'
+          displayName: 'NuGet restore'
           inputs:
             restoreSolution: '$(Build.SourcesDirectory)\Forge.sln'
-            nugetConfigPath: '$(Build.SourcesDirectory)\nuget.config'
             verbosityRestore: 'detailed'
-          retryCountOnTaskFailure: 5
+          retryCountOnTaskFailure: 3
           env:
-            NUGET_HTTP_CACHE_PATH: '$(Agent.TempDirectory)\nuget-cache'
-            NUGET_PACKAGES: '$(Agent.TempDirectory)\nuget-packages'
+            DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+            DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
 
         # Fallback: Use dotnet restore if NuGet restore fails
         - task: DotNetCoreCLI@2
@@ -83,3 +103,118 @@ extends:
             solution: '$(Build.SourcesDirectory)\Forge.sln'
             platform: 'Any CPU'
             configuration: Release
+            
+        - task: VSTest@2
+          displayName: 'Run Tests'
+          inputs:
+            testAssemblyVer2: |
+              $(Build.SourcesDirectory)\Forge.TreeWalker.UnitTests\obj\Release\Microsoft.Forge.TreeWalker.UnitTests.dll
+            runInParallel: True
+            
+        - task: VSBuild@1
+          displayName: 'Build .NET sln and pack'
+          inputs:
+            solution: '$(Build.SourcesDirectory)\Forge.sln'
+            platform: 'Any CPU'
+            configuration: Release
+            msbuildArgs: '-t:pack'
+            
+        - task: EsrpCodeSigning@5
+          displayName: 'ESRP CodeSigning - Authenticode MI'
+          inputs:
+            ConnectedServiceName: 'ForgeManagedIdentity'
+            UseMSIAuthentication: true
+            AppRegistrationClientId: 'ee5bddcd-7e6d-40c7-a645-8f0be9da4e24'
+            AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
+            EsrpClientId: 'ec6597cc-b900-43a4-9d2b-ffc5cc4f8c56'
+            AuthAKVName: 'ForgeKeyVault2'
+            AuthSignCertName: 'ForgeKeyVault2Certificate'
+            ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+            signConfigType: 'inlineSignParams'
+            FolderPath: '$(Build.SourcesDirectory)\Forge.TreeWalker\bin\Release'
+            Pattern: 'Microsoft.Forge.TreeWalker.dll'
+            OpusName: 'Microsoft Forge TreeWalker'
+            OpusInfo: 'https://www.github.com/microsoft/forge'
+            inlineOperation: |
+              [  {
+                      "keyCode": "CP-230012",
+                      "operationSetCode": "SigntoolSign",
+                      "parameters": [
+                      {
+                          "parameterName": "OpusName",
+                          "parameterValue": "Microsoft"
+                      },
+                      {
+                          "parameterName": "OpusInfo",
+                          "parameterValue": "http://www.microsoft.com"
+                      },
+                      {
+                          "parameterName": "Append",
+                          "parameterValue": "/as"
+                      },
+                      {
+                          "parameterName": "FileDigest",
+                          "parameterValue": "/fd \"SHA256\""
+                      },
+                      {
+                          "parameterName": "PageHash",
+                          "parameterValue": "/NPH"
+                      },
+                      {
+                          "parameterName": "TimeStamp",
+                          "parameterValue": "/tr \"http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer\" /td sha256"
+                      }
+                      ],
+                      "toolName": "sign",
+                      "toolVersion": "1.0"
+                  },
+                  {
+                      "keyCode": "CP-230012",
+                      "operationSetCode": "SigntoolVerify",
+                      "parameters": [ ],
+                      "toolName": "sign",
+                      "toolVersion": "1.0"
+                  }]
+                  
+        - task: EsrpCodeSigning@5
+          displayName: 'ESRP CodeSigning - NuGet MI'
+          inputs:
+            ConnectedServiceName: 'ForgeManagedIdentity'
+            UseMSIAuthentication: true
+            AppRegistrationClientId: 'ee5bddcd-7e6d-40c7-a645-8f0be9da4e24'
+            AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
+            EsrpClientId: 'ec6597cc-b900-43a4-9d2b-ffc5cc4f8c56'
+            AuthAKVName: 'ForgeKeyVault2'
+            AuthSignCertName: 'ForgeKeyVault2Certificate'
+            ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+            signConfigType: 'inlineSignParams'
+            FolderPath: '$(Build.SourcesDirectory)\Forge.TreeWalker\bin\Release'
+            Pattern: 'Microsoft.Forge.TreeWalker*.symbols.nupkg'
+            inlineOperation: |
+              [ 
+                 {
+                     "keyCode": "CP-401405",
+                     "operationSetCode": "NuGetSign",
+                     "parameters": [ ],
+                     "toolName": "sign",
+                     "toolVersion": "1.0"
+                 },
+                 {
+                     "keyCode": "CP-401405",
+                     "operationSetCode": "NuGetVerify",
+                     "parameters": [ ],
+                     "toolName": "sign",
+                     "toolVersion": "1.0"
+                 }
+              ]
+            SessionTimeout: '60'
+            MaxConcurrency: '50'
+            MaxRetryAttempts: '5'
+            
+        - task: NuGetCommand@2
+          displayName: 'NuGet push AzureArtifacts'
+          inputs:
+            command: push
+            packagesToPush: '$(Build.SourcesDirectory)\Forge.TreeWalker\bin\Release\Microsoft.Forge.TreeWalker*.symbols.nupkg'
+            publishVstsFeed: 'ForgeArtifacts'
+            allowPackageConflicts: true
