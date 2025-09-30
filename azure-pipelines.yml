@@ -31,7 +31,7 @@ extends:
         - name: ob_outputDirectory
           value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
         steps:
-        # Install .NET SDK FIRST - before any restore operations
+        # Install .NET SDK first
         - task: UseDotNet@2
           displayName: 'Install .NET 6.0 SDK'
           inputs:
@@ -44,58 +44,120 @@ extends:
             packageType: 'runtime'
             version: '2.1.23'
 
+        # Create custom NuGet config with SSL workarounds for OneBranch
         - powershell: |
-              # Verify .NET installation
-              Write-Host "=== .NET SDK Information ==="
+              Write-Host "=== Creating OneBranch-compatible NuGet.config ==="
+              
+              $nugetConfig = @"
+              <?xml version="1.0" encoding="utf-8"?>
+              <configuration>
+                <packageSources>
+                  <clear />
+                  <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+                </packageSources>
+                <config>
+                  <add key="globalPackagesFolder" value="$(Agent.TempDirectory)\nuget-packages" />
+                  <add key="repositoryPath" value="$(Agent.TempDirectory)\packages" />
+                  <add key="http_proxy" value="" />
+                  <add key="http_proxy.user" value="" />
+                  <add key="http_proxy.password" value="" />
+                  <add key="defaultPushSource" value="https://api.nuget.org/v3/index.json" />
+                  <add key="signatureValidationMode" value="require" />
+                </config>
+                <packageRestore>
+                  <add key="enabled" value="True" />
+                  <add key="automatic" value="True" />
+                </packageRestore>
+                <activePackageSource>
+                  <add key="All" value="(Aggregate source)" />
+                </activePackageSource>
+                <trustedSigners>
+                  <author name="microsoft">
+                    <certificate fingerprint="3F9001EA83C560D712C24CF213C3D312CB3BFF51EE89435D3430BD06B5D0EECE" hashAlgorithm="SHA256" allowUntrustedRoot="false" />
+                  </author>
+                  <author name="nuget">
+                    <certificate fingerprint="0E5F38F57DC1BCC806D8494F4F90FBCEDD988B46760709CBEEC6F4219AA6157D" hashAlgorithm="SHA256" allowUntrustedRoot="false" />
+                  </author>
+                </trustedSigners>
+              </configuration>
+              "@
+              
+              $configPath = "$(Build.SourcesDirectory)\nuget.config"
+              $nugetConfig | Out-File -FilePath $configPath -Encoding UTF8
+              Write-Host "Custom NuGet.config created at: $configPath"
+              
+              # Set environment variables for .NET restore
+              Write-Host "=== Setting .NET Environment Variables ==="
+              Write-Host "##vso[task.setvariable variable=NUGET_PACKAGES]$(Agent.TempDirectory)\nuget-packages"
+              Write-Host "##vso[task.setvariable variable=DOTNET_SKIP_FIRST_TIME_EXPERIENCE]true"
+              Write-Host "##vso[task.setvariable variable=DOTNET_CLI_TELEMETRY_OPTOUT]true"
+              Write-Host "##vso[task.setvariable variable=NUGET_HTTP_CACHE_PATH]$(Agent.TempDirectory)\nuget-cache"
+              
+              # Test basic connectivity
+              Write-Host "=== Testing Basic Connectivity ==="
               try {
-                $dotnetVersion = dotnet --version
-                Write-Host ".NET SDK Version: $dotnetVersion"
-                dotnet --list-sdks
-                dotnet --list-runtimes
+                $testResult = Test-NetConnection -ComputerName "api.nuget.org" -Port 443 -InformationLevel Quiet
+                Write-Host "Port 443 to api.nuget.org accessible: $testResult"
               } catch {
-                Write-Host "Error checking .NET installation: $_"
+                Write-Host "Network test failed: $_"
               }
-              
-              Write-Host "`n=== Environment Variables ==="
-              Write-Host "PATH: $env:PATH"
-              Write-Host "DOTNET_ROOT: $env:DOTNET_ROOT"
-              
-              # Enhanced TLS configuration for OneBranch containers
-              [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-              [Net.ServicePointManager]::CheckCertificateRevocationList = $false
-              [Net.ServicePointManager]::DefaultConnectionLimit = 100
-              
-              Write-Host "`n=== Testing NuGet.org Connectivity ==="
-              try {
-                $headers = @{
-                  'User-Agent' = 'NuGet Command Line/6.0.0 (Microsoft Windows NT 10.0.17763.0)'
-                }
-                $resp = Invoke-WebRequest -Uri "https://api.nuget.org/v3/index.json" -UseBasicParsing -Headers $headers -TimeoutSec 30
-                Write-Host "NuGet.org is reachable. Status: $($resp.StatusCode)"
-              } catch {
-                Write-Host "NuGet.org connectivity issue: $_"
-              }
-          displayName: "Verify .NET SDK and test connectivity"
+          displayName: "Setup OneBranch NuGet Configuration"
 
-        - task: NuGetCommand@2
-          displayName: 'NuGet restore'
+        # Use MSBuild-based restore instead of NuGet CLI
+        - task: MSBuild@1
+          displayName: 'MSBuild Restore (OneBranch Compatible)'
           inputs:
-            restoreSolution: '$(Build.SourcesDirectory)\Forge.sln'
-            verbosityRestore: 'detailed'
+            solution: '$(Build.SourcesDirectory)\Forge.sln'
+            msbuildArguments: '/t:Restore /p:RestoreConfigFile="$(Build.SourcesDirectory)\nuget.config" /p:RestoreForce=true /p:RestoreNoCache=true /flp:logfile=$(Agent.TempDirectory)\msbuild-restore.log;verbosity=diagnostic'
+            configuration: 'Release'
+            platform: 'Any CPU'
           retryCountOnTaskFailure: 3
           env:
-            DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
-            DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+            NUGET_PACKAGES: $(Agent.TempDirectory)\nuget-packages
+            DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+            DOTNET_CLI_TELEMETRY_OPTOUT: true
 
-        # Fallback: Use dotnet restore if NuGet restore fails
+        # Alternative: Try dotnet restore with custom settings
         - task: DotNetCoreCLI@2
-          displayName: 'Fallback: dotnet restore'
+          displayName: 'Fallback: .NET Restore with Custom Config'
           condition: failed()
           inputs:
             command: 'restore'
             projects: '$(Build.SourcesDirectory)\Forge.sln'
-            verbosityRestore: 'detailed'
+            arguments: '--configfile "$(Build.SourcesDirectory)\nuget.config" --packages "$(Agent.TempDirectory)\nuget-packages" --force --no-cache --verbosity detailed'
           retryCountOnTaskFailure: 3
+          env:
+            NUGET_PACKAGES: $(Agent.TempDirectory)\nuget-packages
+            DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+            DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+        # Final fallback: Use packages.config approach if available
+        - powershell: |
+              Write-Host "=== Final Fallback: Manual Package Download ==="
+              
+              # Check if packages.config exists
+              $packagesConfig = Get-ChildItem -Path "$(Build.SourcesDirectory)" -Recurse -Name "packages.config" -ErrorAction SilentlyContinue
+              if ($packagesConfig) {
+                Write-Host "Found packages.config files: $($packagesConfig -join ', ')"
+                
+                # Try legacy NuGet restore
+                $nugetExe = Get-Command nuget.exe -ErrorAction SilentlyContinue
+                if ($nugetExe) {
+                  Write-Host "Attempting legacy NuGet restore..."
+                  & $nugetExe.Source restore "$(Build.SourcesDirectory)\Forge.sln" -ConfigFile "$(Build.SourcesDirectory)\nuget.config" -PackagesDirectory "$(Agent.TempDirectory)\packages" -Verbosity detailed
+                }
+              } else {
+                Write-Host "No packages.config found, skipping legacy restore"
+              }
+              
+              # Display logs for debugging
+              $logFile = "$(Agent.TempDirectory)\msbuild-restore.log"
+              if (Test-Path $logFile) {
+                Write-Host "=== MSBuild Restore Log ==="
+                Get-Content $logFile | Select-Object -Last 50
+              }
+          displayName: "Final Fallback and Diagnostics"
+          condition: failed()
 
         - task: VSBuild@1
           displayName: 'Build .NET sln for tests'
