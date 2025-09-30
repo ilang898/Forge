@@ -13,30 +13,27 @@ resources:
     ref: refs/heads/main
 
 variables:
-  BuildConfiguration: Release
-  # OneBranch requires these specific variables
   CDP_DEFINITION_BUILD_COUNT: $[counter('', 0)]
+  BuildConfiguration: Release
 
 extends:
-  template: v2/OneBranch.Official.CrossPlat.yml@templates
+  template: v2/OneBranch.NonOfficial.CrossPlat.yml@templates
   parameters:
-    # Enable build stages explicitly
-    cloudvault:
-      enabled: false
     globalSdl:
       tsa:
         enabled: false
       policheck:
         break: true
-      # Disable some SDL checks that might block job execution
       credscan:
         enabled: true
+        suppressionsFile: $(Build.SourcesDirectory)\.config\CredScanSuppressions.json
       binskim:
         enabled: false
     
-    # Critical: Add git configuration to ensure proper checkout
-    git:
-      fetchDepth: 1
+    # This is critical - OneBranch templates need this structure
+    featureFlags:
+      WindowsHostVersion:
+        Version: 2022
     
     stages:
     - stage: build
@@ -44,33 +41,24 @@ extends:
       jobs:
       - job: main
         displayName: 'Build and Test Job'
+        # Use OneBranch managed pool instead of vmImage
         pool:
-          vmImage: 'windows-2022'
+          type: windows
         
         variables:
         - name: ob_outputDirectory
           value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
-        - name: ob_nugetPublishing_enabled
-          value: true
-        # Critical: Add this variable to enable job execution
         - name: ob_git_checkout
           value: true
         
         steps:
-        # Add debug step to verify job is running
         - powershell: |
-              Write-Host "=== Job Execution Started ==="
-              Write-Host "Build Reason: $(Build.Reason)"
-              Write-Host "Source Branch: $(Build.SourceBranch)"
-              Write-Host "Agent: $(Agent.Name)"
-              Write-Host "Working Directory: $(System.DefaultWorkingDirectory)"
-              Write-Host "Source Directory: $(Build.SourcesDirectory)"
-              Write-Host "=== OneBranch Variables ==="
-              Write-Host "ob_outputDirectory: $(ob_outputDirectory)"
-              Write-Host "ob_git_checkout: $(ob_git_checkout)"
-          displayName: "Debug: Verify Job Execution"
-
-        # Install .NET SDK first
+            Write-Host "=== Build Job Started Successfully ==="
+            Write-Host "Build ID: $(Build.BuildId)"
+            Write-Host "Source Branch: $(Build.SourceBranch)"
+            Write-Host "Reason: $(Build.Reason)"
+          displayName: "Verify Build Job Execution"
+        
         - task: UseDotNet@2
           displayName: 'Install .NET 6.0 SDK'
           inputs:
@@ -83,22 +71,30 @@ extends:
             packageType: 'runtime'
             version: '2.1.23'
 
-        # Test connectivity
-        - powershell: |
-              Write-Host "=== Testing NuGet.org connectivity ==="
-              try {
-                $resp = Invoke-WebRequest -Uri "https://api.nuget.org/v3/index.json" -UseBasicParsing
-                Write-Host "✅ NuGet.org is reachable. Status: $($resp.StatusCode)"
-              } catch {
-                Write-Host "❌ NuGet.org connectivity issue: $_"
-                exit 1
-              }
-          displayName: "Test NuGet.org connectivity"
-
-        # Standard NuGet restore
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
           inputs:
             restoreSolution: '$(Build.SourcesDirectory)\Forge.sln'
-            verbosityRestore: 'normal'
           retryCountOnTaskFailure: 3
+
+        - task: VSBuild@1
+          displayName: 'Build .NET sln for tests'
+          inputs:
+            solution: '$(Build.SourcesDirectory)\Forge.sln'
+            platform: 'Any CPU'
+            configuration: $(BuildConfiguration)
+            
+        - task: VSTest@2
+          displayName: 'Run Tests'
+          inputs:
+            testAssemblyVer2: |
+              $(Build.SourcesDirectory)\Forge.TreeWalker.UnitTests\obj\Release\Microsoft.Forge.TreeWalker.UnitTests.dll
+            runInParallel: True
+            
+        - task: VSBuild@1
+          displayName: 'Build .NET sln and pack'
+          inputs:
+            solution: '$(Build.SourcesDirectory)\Forge.sln'
+            platform: 'Any CPU'
+            configuration: $(BuildConfiguration)
+            msbuildArgs: '-t:pack'
