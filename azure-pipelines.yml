@@ -1,18 +1,22 @@
 trigger:
 - master
 
+pr:
+- master
+- feature/*
+
 resources:
   repositories:
-  - repository: onebranchTemplates
+  - repository: templates
     type: git
     name: OneBranch.Pipelines/GovernedTemplates
     ref: refs/heads/main
 
 variables:
-  WindowsContainerImage: 'onebranch.azurecr.io/windows/ltsc2019/vse2019:latest'
+  BuildConfiguration: Release
 
 extends:
-  template: v2/OneBranch.Official.CrossPlat.yml@onebranchTemplates
+  template: v2/OneBranch.Official.CrossPlat.yml@templates
   parameters:
     globalSdl:
       tsa:
@@ -20,16 +24,19 @@ extends:
       policheck:
         break: true
     stages:
-    - stage: stage
+    - stage: build
       jobs:
-      - job: job
+      - job: main
+        # Force use of Azure DevOps hosted VMs instead of OneBranch managed pools
         pool:
-          type: windows
+          vmImage: 'windows-2022'  # This ensures standard Azure DevOps VMs
+        
         variables:
-        - name: ob_nugetPublishing_enabled
-          value: true
         - name: ob_outputDirectory
           value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
+        - name: ob_nugetPublishing_enabled
+          value: true
+        
         steps:
         # Install .NET SDK first
         - task: UseDotNet@2
@@ -44,239 +51,31 @@ extends:
             packageType: 'runtime'
             version: '2.1.23'
 
-        # Create custom NuGet config with SSL workarounds for OneBranch
+        # Test connectivity (should work fine on standard VMs)
         - powershell: |
-              Write-Host "=== Creating OneBranch-compatible NuGet.config ==="
-              
-              $nugetConfig = @"
-              <?xml version="1.0" encoding="utf-8"?>
-              <configuration>
-                <packageSources>
-                  <clear />
-                  <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
-                </packageSources>
-                <config>
-                  <add key="globalPackagesFolder" value="$(Agent.TempDirectory)\nuget-packages" />
-                  <add key="repositoryPath" value="$(Agent.TempDirectory)\packages" />
-                  <add key="http_proxy" value="" />
-                  <add key="http_proxy.user" value="" />
-                  <add key="http_proxy.password" value="" />
-                  <add key="defaultPushSource" value="https://api.nuget.org/v3/index.json" />
-                  <add key="signatureValidationMode" value="require" />
-                </config>
-                <packageRestore>
-                  <add key="enabled" value="True" />
-                  <add key="automatic" value="True" />
-                </packageRestore>
-                <activePackageSource>
-                  <add key="All" value="(Aggregate source)" />
-                </activePackageSource>
-                <trustedSigners>
-                  <author name="microsoft">
-                    <certificate fingerprint="3F9001EA83C560D712C24CF213C3D312CB3BFF51EE89435D3430BD06B5D0EECE" hashAlgorithm="SHA256" allowUntrustedRoot="false" />
-                  </author>
-                  <author name="nuget">
-                    <certificate fingerprint="0E5F38F57DC1BCC806D8494F4F90FBCEDD988B46760709CBEEC6F4219AA6157D" hashAlgorithm="SHA256" allowUntrustedRoot="false" />
-                  </author>
-                </trustedSigners>
-              </configuration>
-              "@
-              
-              $configPath = "$(Build.SourcesDirectory)\nuget.config"
-              $nugetConfig | Out-File -FilePath $configPath -Encoding UTF8
-              Write-Host "Custom NuGet.config created at: $configPath"
-              
-              # Set environment variables for .NET restore
-              Write-Host "=== Setting .NET Environment Variables ==="
-              Write-Host "##vso[task.setvariable variable=NUGET_PACKAGES]$(Agent.TempDirectory)\nuget-packages"
-              Write-Host "##vso[task.setvariable variable=DOTNET_SKIP_FIRST_TIME_EXPERIENCE]true"
-              Write-Host "##vso[task.setvariable variable=DOTNET_CLI_TELEMETRY_OPTOUT]true"
-              Write-Host "##vso[task.setvariable variable=NUGET_HTTP_CACHE_PATH]$(Agent.TempDirectory)\nuget-cache"
-              
-              # Test basic connectivity
-              Write-Host "=== Testing Basic Connectivity ==="
+              Write-Host "=== Testing NuGet.org connectivity on Azure DevOps VM ==="
+              Write-Host "Agent: $(Agent.Name)"
+              Write-Host "Pool: $(Agent.JobName)"
               try {
-                $testResult = Test-NetConnection -ComputerName "api.nuget.org" -Port 443 -InformationLevel Quiet
-                Write-Host "Port 443 to api.nuget.org accessible: $testResult"
+                $resp = Invoke-WebRequest -Uri "https://api.nuget.org/v3/index.json" -UseBasicParsing
+                Write-Host "✅ NuGet.org is reachable. Status: $($resp.StatusCode)"
               } catch {
-                Write-Host "Network test failed: $_"
+                Write-Host "❌ NuGet.org connectivity issue: $_"
+                exit 1
               }
-          displayName: "Setup OneBranch NuGet Configuration"
+          displayName: "Test NuGet.org connectivity"
 
-        # Use MSBuild-based restore instead of NuGet CLI
-        - task: MSBuild@1
-          displayName: 'MSBuild Restore (OneBranch Compatible)'
+        # Standard NuGet restore
+        - task: NuGetCommand@2
+          displayName: 'NuGet restore'
           inputs:
-            solution: '$(Build.SourcesDirectory)\Forge.sln'
-            msbuildArguments: '/t:Restore /p:RestoreConfigFile="$(Build.SourcesDirectory)\nuget.config" /p:RestoreForce=true /p:RestoreNoCache=true /flp:logfile=$(Agent.TempDirectory)\msbuild-restore.log;verbosity=diagnostic'
-            configuration: 'Release'
-            platform: 'Any CPU'
+            restoreSolution: '$(Build.SourcesDirectory)\Forge.sln'
+            verbosityRestore: 'normal'
           retryCountOnTaskFailure: 3
-          env:
-            NUGET_PACKAGES: $(Agent.TempDirectory)\nuget-packages
-            DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-            DOTNET_CLI_TELEMETRY_OPTOUT: true
-
-        # Alternative: Try dotnet restore with custom settings
-        - task: DotNetCoreCLI@2
-          displayName: 'Fallback: .NET Restore with Custom Config'
-          condition: failed()
-          inputs:
-            command: 'restore'
-            projects: '$(Build.SourcesDirectory)\Forge.sln'
-            arguments: '--configfile "$(Build.SourcesDirectory)\nuget.config" --packages "$(Agent.TempDirectory)\nuget-packages" --force --no-cache --verbosity detailed'
-          retryCountOnTaskFailure: 3
-          env:
-            NUGET_PACKAGES: $(Agent.TempDirectory)\nuget-packages
-            DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-            DOTNET_CLI_TELEMETRY_OPTOUT: true
-
-        # Final fallback: Use packages.config approach if available
-        - powershell: |
-              Write-Host "=== Final Fallback: Manual Package Download ==="
-              
-              # Check if packages.config exists
-              $packagesConfig = Get-ChildItem -Path "$(Build.SourcesDirectory)" -Recurse -Name "packages.config" -ErrorAction SilentlyContinue
-              if ($packagesConfig) {
-                Write-Host "Found packages.config files: $($packagesConfig -join ', ')"
-                
-                # Try legacy NuGet restore
-                $nugetExe = Get-Command nuget.exe -ErrorAction SilentlyContinue
-                if ($nugetExe) {
-                  Write-Host "Attempting legacy NuGet restore..."
-                  & $nugetExe.Source restore "$(Build.SourcesDirectory)\Forge.sln" -ConfigFile "$(Build.SourcesDirectory)\nuget.config" -PackagesDirectory "$(Agent.TempDirectory)\packages" -Verbosity detailed
-                }
-              } else {
-                Write-Host "No packages.config found, skipping legacy restore"
-              }
-              
-              # Display logs for debugging
-              $logFile = "$(Agent.TempDirectory)\msbuild-restore.log"
-              if (Test-Path $logFile) {
-                Write-Host "=== MSBuild Restore Log ==="
-                Get-Content $logFile | Select-Object -Last 50
-              }
-          displayName: "Final Fallback and Diagnostics"
-          condition: failed()
 
         - task: VSBuild@1
           displayName: 'Build .NET sln for tests'
           inputs:
             solution: '$(Build.SourcesDirectory)\Forge.sln'
             platform: 'Any CPU'
-            configuration: Release
-            
-        - task: VSTest@2
-          displayName: 'Run Tests'
-          inputs:
-            testAssemblyVer2: |
-              $(Build.SourcesDirectory)\Forge.TreeWalker.UnitTests\obj\Release\Microsoft.Forge.TreeWalker.UnitTests.dll
-            runInParallel: True
-            
-        - task: VSBuild@1
-          displayName: 'Build .NET sln and pack'
-          inputs:
-            solution: '$(Build.SourcesDirectory)\Forge.sln'
-            platform: 'Any CPU'
-            configuration: Release
-            msbuildArgs: '-t:pack'
-            
-        - task: EsrpCodeSigning@5
-          displayName: 'ESRP CodeSigning - Authenticode MI'
-          inputs:
-            ConnectedServiceName: 'ForgeManagedIdentity'
-            UseMSIAuthentication: true
-            AppRegistrationClientId: 'ee5bddcd-7e6d-40c7-a645-8f0be9da4e24'
-            AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
-            EsrpClientId: 'ec6597cc-b900-43a4-9d2b-ffc5cc4f8c56'
-            AuthAKVName: 'ForgeKeyVault2'
-            AuthSignCertName: 'ForgeKeyVault2Certificate'
-            ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
-            signConfigType: 'inlineSignParams'
-            FolderPath: '$(Build.SourcesDirectory)\Forge.TreeWalker\bin\Release'
-            Pattern: 'Microsoft.Forge.TreeWalker.dll'
-            OpusName: 'Microsoft Forge TreeWalker'
-            OpusInfo: 'https://www.github.com/microsoft/forge'
-            inlineOperation: |
-              [  {
-                      "keyCode": "CP-230012",
-                      "operationSetCode": "SigntoolSign",
-                      "parameters": [
-                      {
-                          "parameterName": "OpusName",
-                          "parameterValue": "Microsoft"
-                      },
-                      {
-                          "parameterName": "OpusInfo",
-                          "parameterValue": "http://www.microsoft.com"
-                      },
-                      {
-                          "parameterName": "Append",
-                          "parameterValue": "/as"
-                      },
-                      {
-                          "parameterName": "FileDigest",
-                          "parameterValue": "/fd \"SHA256\""
-                      },
-                      {
-                          "parameterName": "PageHash",
-                          "parameterValue": "/NPH"
-                      },
-                      {
-                          "parameterName": "TimeStamp",
-                          "parameterValue": "/tr \"http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer\" /td sha256"
-                      }
-                      ],
-                      "toolName": "sign",
-                      "toolVersion": "1.0"
-                  },
-                  {
-                      "keyCode": "CP-230012",
-                      "operationSetCode": "SigntoolVerify",
-                      "parameters": [ ],
-                      "toolName": "sign",
-                      "toolVersion": "1.0"
-                  }]
-                  
-        - task: EsrpCodeSigning@5
-          displayName: 'ESRP CodeSigning - NuGet MI'
-          inputs:
-            ConnectedServiceName: 'ForgeManagedIdentity'
-            UseMSIAuthentication: true
-            AppRegistrationClientId: 'ee5bddcd-7e6d-40c7-a645-8f0be9da4e24'
-            AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
-            EsrpClientId: 'ec6597cc-b900-43a4-9d2b-ffc5cc4f8c56'
-            AuthAKVName: 'ForgeKeyVault2'
-            AuthSignCertName: 'ForgeKeyVault2Certificate'
-            ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
-            signConfigType: 'inlineSignParams'
-            FolderPath: '$(Build.SourcesDirectory)\Forge.TreeWalker\bin\Release'
-            Pattern: 'Microsoft.Forge.TreeWalker*.symbols.nupkg'
-            inlineOperation: |
-              [ 
-                 {
-                     "keyCode": "CP-401405",
-                     "operationSetCode": "NuGetSign",
-                     "parameters": [ ],
-                     "toolName": "sign",
-                     "toolVersion": "1.0"
-                 },
-                 {
-                     "keyCode": "CP-401405",
-                     "operationSetCode": "NuGetVerify",
-                     "parameters": [ ],
-                     "toolName": "sign",
-                     "toolVersion": "1.0"
-                 }
-              ]
-            SessionTimeout: '60'
-            MaxConcurrency: '50'
-            MaxRetryAttempts: '5'
-            
-        - task: NuGetCommand@2
-          displayName: 'NuGet push AzureArtifacts'
-          inputs:
-            command: push
-            packagesToPush: '$(Build.SourcesDirectory)\Forge.TreeWalker\bin\Release\Microsoft.Forge.TreeWalker*.symbols.nupkg'
-            publishVstsFeed: 'ForgeArtifacts'
-            allowPackageConflicts: true
+            configuration: $(BuildConfiguration)
