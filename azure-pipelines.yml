@@ -44,10 +44,10 @@ extends:
   template: v2/OneBranch.NonOfficial.CrossPlat.yml@templates # https://aka.ms/obpipelines/templates
   parameters:
     featureFlags:
-      LinuxHostVersion:
-          Network: KS1
-      WindowsHostVersion:
-          Network: KS1
+      LinuxHostVersion:
+        Network: KS1
+      WindowsHostVersion:
+        Network: KS1
     globalSdl: # https://aka.ms/obpipelines/sdl
       tsa:
         enabled: false # onebranch publish all sdl results to TSA. If TSA is disabled all SDL tools will forced into 'break' build mode.
@@ -64,7 +64,6 @@ extends:
     - stage: build
       jobs:
       - job: main
-        # Fix 2: Can't have both 'type' and 'vmImage' - choose one
         pool:
           type: windows  # read more about custom job pool types at https://aka.ms/obpipelines/yaml/jobs
           vmImage: 'windows-2019'
@@ -76,7 +75,6 @@ extends:
           # ob_sdl_suppression_suppressionFile: $(Build.SourcesDirectory)\.gdn\build.nonofficial.gdnsuppress
 
         steps:
-          # Fix 3: Remove duplicate 'task:' and fix indentation
           - task: NuGetCommand@2
             displayName: 'NuGet restore'
             inputs:
