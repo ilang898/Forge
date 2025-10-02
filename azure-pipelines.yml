@@ -44,6 +44,7 @@ extends:
         - task: GitVersion@5
           inputs:
             runtime: 'core'
+            
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
           inputs:
@@ -54,6 +55,8 @@ extends:
             solution: '$(Build.SourcesDirectory)\Forge.sln'
             platform: 'Any CPU'
             configuration: Release
+            msbuildArgs: /p:NuGetVersion=$(gitVersion.NuGetVersionV2)
+            
         - task: VSTest@2
           displayName: 'Run Tests'
           inputs:
