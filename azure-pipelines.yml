@@ -42,39 +42,26 @@ extends:
         - name: ob_git_fetchDepth
           value: 0  # Fetch full history for GitVersion
         
-        steps:
-        # Ensure we're in the correct directory
-        - pwsh: |
-            Write-Host "Current directory: $(Get-Location)"
-            Write-Host "Build.SourcesDirectory: $(Build.SourcesDirectory)"
-            Write-Host "Files in source directory:"
-            Get-ChildItem -Path "$(Build.SourcesDirectory)" -Recurse -Depth 1
-            
-            # Check if .git exists
-            if (Test-Path "$(Build.SourcesDirectory)\.git") {
-              Write-Host ".git directory found"
-              git branch -a
-            } else {
-              Write-Host ".git directory NOT found"
-            }
-          displayName: 'Debug: Check Repository State'
-          
+        steps:          
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
           inputs:
             restoreSolution: '$(Build.SourcesDirectory)\Forge.sln'
+            
         - task: VSBuild@1
           displayName: 'Build .NET sln for tests'
           inputs:
             solution: '$(Build.SourcesDirectory)\Forge.sln'
             platform: 'Any CPU'
             configuration: Release
+            
         - task: VSTest@2
           displayName: 'Run Tests'
           inputs:
             testAssemblyVer2: |
               $(Build.SourcesDirectory)\Forge.TreeWalker.UnitTests\obj\Release\Microsoft.Forge.TreeWalker.UnitTests.dll
             runInParallel: True
+            
         - task: VSBuild@1
           displayName: 'Build .NET sln and pack'
           inputs:
@@ -82,6 +69,7 @@ extends:
             platform: 'Any CPU'
             configuration: Release
             msbuildArgs: '-t:pack'
+            
         - task: UseDotNet@2
           displayName: 'Use .NET 6.0 SDK'
           inputs:
