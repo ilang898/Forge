@@ -40,6 +40,22 @@ extends:
         - checkout: self
           fetchDepth: 0  # Fetch full history for GitVersion
           persistCredentials: true
+
+        - powershell: |
+            Write-Host "Current directory: $(Get-Location)"
+            Write-Host "Files in directory:"
+            Get-ChildItem
+            Write-Host "Git branches:"
+            git branch -a
+            Write-Host "Git status:"
+            git status
+          displayName: 'Debug: Show repository state'
+
+        - script: |
+            git fetch --unshallow || echo "Already a complete repository"
+            git checkout master || git checkout main || echo "Using current branch"
+          displayName: 'Ensure full git history'
+          continueOnError: true
           
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
