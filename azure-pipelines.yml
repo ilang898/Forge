@@ -16,13 +16,10 @@ extends:
   template: v2/OneBranch.Official.CrossPlat.yml@onebranchTemplates
   parameters:
     featureFlags:
-      LinuxHostVersion:
-        Network: KS1
       WindowsHostVersion:
         Network: KS1
     
     globalSdl:
-      # OneBranch specific settings
       enabled: true
     
     nugetPublishing:
