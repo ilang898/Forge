@@ -37,6 +37,10 @@ extends:
         - name: ob_outputDirectory
           value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
         steps:
+        - checkout: self
+          fetchDepth: 0         # full history
+          clean: true
+          persistCredentials: true
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
           inputs:
