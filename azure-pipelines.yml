@@ -20,11 +20,17 @@ extends:
         Network: KS1
       WindowsHostVersion:
         Network: KS1
+    
+    globalSdl:
+      # OneBranch specific settings
+      enabled: true
+    
     nugetPublishing:
       feeds:
       - name: ForgeArtifacts
         continueOnConflict: true
         files_to_publish: '*.nupkg;!*.symbols.nupkg'
+    
     stages:
     - stage: stage
       jobs:
@@ -36,35 +42,25 @@ extends:
           value: true
         - name: ob_outputDirectory
           value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
-        steps:
-        - checkout: self
-          fetchDepth: 0
-          clean: true
+        - name: ob_git_fetchDepth
+          value: 0  # Fetch full history for GitVersion
         
+        steps:
+        # Ensure we're in the correct directory
         - pwsh: |
-            # Verify git repository
             Write-Host "Current directory: $(Get-Location)"
-            Write-Host "Git branches:"
-            git branch -a
-            Write-Host "Current branch:"
-            git rev-parse --abbrev-ref HEAD
+            Write-Host "Build.SourcesDirectory: $(Build.SourcesDirectory)"
+            Write-Host "Files in source directory:"
+            Get-ChildItem -Path "$(Build.SourcesDirectory)" -Recurse -Depth 1
             
-            # Create GitVersion.yml configuration
-            $gitVersionConfig = @"
-            mode: ContinuousDelivery
-            branches:
-              main:
-                regex: ^master$|^main$
-                tag: ''
-                increment: Patch
-            ignore:
-              sha: []
-            "@
-            
-            $gitVersionConfig | Out-File -FilePath "$(Build.SourcesDirectory)\GitVersion.yml" -Encoding UTF8
-            Write-Host "Created GitVersion.yml"
-          displayName: 'Setup GitVersion Configuration'
-
+            # Check if .git exists
+            if (Test-Path "$(Build.SourcesDirectory)\.git") {
+              Write-Host ".git directory found"
+              git branch -a
+            } else {
+              Write-Host ".git directory NOT found"
+            }
+          displayName: 'Debug: Check Repository State'
           
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
