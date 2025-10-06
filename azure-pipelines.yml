@@ -36,7 +36,7 @@ extends:
           value: true
         - name: ob_outputDirectory
           value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
-        steps:          
+        steps:
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
           inputs:
@@ -47,7 +47,6 @@ extends:
             solution: '$(Build.SourcesDirectory)\Forge.sln'
             platform: 'Any CPU'
             configuration: Release
-            
         - task: VSTest@2
           displayName: 'Run Tests'
           inputs:
