@@ -37,25 +37,31 @@ extends:
         - name: ob_outputDirectory
           value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
         steps:
-        - checkout: self
-          fetchDepth: 0  # Fetch full history for GitVersion
-          persistCredentials: true
-
-        - powershell: |
-            Write-Host "Current directory: $(Get-Location)"
-            Write-Host "Files in directory:"
-            Get-ChildItem
-            Write-Host "Git branches:"
-            git branch -a
-            Write-Host "Git status:"
-            git status
-          displayName: 'Debug: Show repository state'
-
-        - script: |
-            git fetch --unshallow || echo "Already a complete repository"
-            git checkout master || git checkout main || echo "Using current branch"
-          displayName: 'Ensure full git history'
-          continueOnError: true
+        # Fix GitVersion issue by configuring it
+        - pwsh: |
+            # Create GitVersion.yml if it doesn't exist
+            $gitVersionConfig = @"
+            mode: ContinuousDelivery
+            branches:
+              main:
+                regex: ^master$|^main$
+                tag: ''
+              feature:
+                regex: ^features?[/-]
+                tag: useBranchName
+              pull-request:
+                regex: ^(pull|pull\-requests|pr)[/-]
+                tag: PullRequest
+            ignore:
+              sha: []
+            "@
+            
+            if (-not (Test-Path "GitVersion.yml")) {
+                $gitVersionConfig | Out-File -FilePath "GitVersion.yml" -Encoding UTF8
+                Write-Host "Created GitVersion.yml configuration"
+            }
+          displayName: 'Configure GitVersion'
+          workingDirectory: '$(Build.SourcesDirectory)'
           
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
