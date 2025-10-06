@@ -37,31 +37,34 @@ extends:
         - name: ob_outputDirectory
           value: '$(Build.ArtifactStagingDirectory)/ONEBRANCH_ARTIFACT'
         steps:
-        # Fix GitVersion issue by configuring it
+        - checkout: self
+          fetchDepth: 0
+          clean: true
+        
         - pwsh: |
-            # Create GitVersion.yml if it doesn't exist
+            # Verify git repository
+            Write-Host "Current directory: $(Get-Location)"
+            Write-Host "Git branches:"
+            git branch -a
+            Write-Host "Current branch:"
+            git rev-parse --abbrev-ref HEAD
+            
+            # Create GitVersion.yml configuration
             $gitVersionConfig = @"
             mode: ContinuousDelivery
             branches:
               main:
                 regex: ^master$|^main$
                 tag: ''
-              feature:
-                regex: ^features?[/-]
-                tag: useBranchName
-              pull-request:
-                regex: ^(pull|pull\-requests|pr)[/-]
-                tag: PullRequest
+                increment: Patch
             ignore:
               sha: []
             "@
             
-            if (-not (Test-Path "GitVersion.yml")) {
-                $gitVersionConfig | Out-File -FilePath "GitVersion.yml" -Encoding UTF8
-                Write-Host "Created GitVersion.yml configuration"
-            }
-          displayName: 'Configure GitVersion'
-          workingDirectory: '$(Build.SourcesDirectory)'
+            $gitVersionConfig | Out-File -FilePath "$(Build.SourcesDirectory)\GitVersion.yml" -Encoding UTF8
+            Write-Host "Created GitVersion.yml"
+          displayName: 'Setup GitVersion Configuration'
+
           
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
