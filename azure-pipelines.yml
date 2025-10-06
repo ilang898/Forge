@@ -40,11 +40,6 @@ extends:
         - checkout: self
           fetchDepth: 0  # Fetch full history for GitVersion
           persistCredentials: true
-
-        - script: |
-          git checkout master 
-          displayName: 'Ensure branch is checked out'
-          continueOnError: true
           
         - task: NuGetCommand@2
           displayName: 'NuGet restore'
