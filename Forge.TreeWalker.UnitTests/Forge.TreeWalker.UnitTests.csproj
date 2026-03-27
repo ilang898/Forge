@@ -41,6 +41,8 @@
     </PackageReference>
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.0.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.Scripting" Version="3.8.0" />
+	<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.5" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.5" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Newtonsoft.Json.Schema" Version="3.0.15" />
     <PackageReference Include="MSTest.TestAdapter" Version="1.3.2" />
@@ -54,6 +56,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="test\ActionsAndCallbacks\BaseCommonAction.cs" />
     <Compile Include="test\ActionsAndCallbacks\CollectDiagnosticsAction.cs" />
+    <Compile Include="test\ActionsAndCallbacks\DependencyInjectionTestAction.cs" />
     <Compile Include="test\ActionsAndCallbacks\ForgeUserContext.cs" />
     <Compile Include="test\ActionsAndCallbacks\ReturnSessionIdAction.cs" />
     <Compile Include="test\ActionsAndCallbacks\RevisitAction.cs" />
@@ -64,6 +67,7 @@
     <Compile Include="test\ActionsAndCallbacks\TestEvaluateInputTypeAction.cs" />
     <Compile Include="test\ActionsAndCallbacks\TreeWalkerCallbacks.cs" />
     <Compile Include="test\ActionsAndCallbacks\TreeWalkerCallbacksV2.cs" />
+    <Compile Include="test\DependencyInjectionTests.cs" />
     <Compile Include="test\ExecutorUnitTests.cs" />
     <Compile Include="test\ExternalTestType.cs" />
     <Compile Include="test\ForgeSchemaHelper.cs" />
