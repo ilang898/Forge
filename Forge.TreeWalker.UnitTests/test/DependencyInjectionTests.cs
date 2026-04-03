@@ -155,7 +155,6 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
 
         private static TreeWalkerSession CreateSession(
             string jsonSchema,
-            IServiceProvider serviceProvider = null,
             IForgeActionFactory actionFactory = null)
         {
             Guid sessionId = Guid.NewGuid();
@@ -173,7 +172,6 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
             {
                 UserContext = new ForgeUserContext(),
                 ForgeActionsAssembly = typeof(SingleDependencyAction).Assembly,
-                ServiceProvider = serviceProvider,
                 ActionFactory = actionFactory
             };
 
@@ -245,14 +243,14 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
         [TestMethod]
         public async Task TestServiceProviderFactory_SingleDependency_WalkTree_Success()
         {
-            // Test - WalkTree with ServiceProvider set, action resolved via ActivatorUtilities with single dependency.
+            // Test - WalkTree with ServiceProviderActionFactory, action resolved via ActivatorUtilities with single dependency.
             using (var sp = BuildServiceProvider("InjectedValue"))
             {
-                var session = CreateSession(SingleDependencySchema, serviceProvider: sp);
+                var session = CreateSession(SingleDependencySchema, actionFactory: new ServiceProviderActionFactory(sp));
                 string status = await session.WalkTree("Root");
 
                 Assert.AreEqual("RanToCompletion", status,
-                    "Expected WalkTree to complete successfully with ServiceProvider resolving SingleDependencyAction.");
+                    "Expected WalkTree to complete successfully with ServiceProviderActionFactory resolving SingleDependencyAction.");
 
                 ActionResponse response = await session.GetLastActionResponseAsync();
                 Assert.AreEqual("Success", response.Status);
@@ -264,14 +262,14 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
         [TestMethod]
         public async Task TestServiceProviderFactory_MultipleDependencies_WalkTree_Success()
         {
-            // Test - WalkTree with ServiceProvider set, action resolved via ActivatorUtilities with multiple dependencies.
+            // Test - WalkTree with ServiceProviderActionFactory, action resolved via ActivatorUtilities with multiple dependencies.
             using (var sp = BuildServiceProvider("MultiDep"))
             {
-                var session = CreateSession(MultipleDependencySchema, serviceProvider: sp);
+                var session = CreateSession(MultipleDependencySchema, actionFactory: new ServiceProviderActionFactory(sp));
                 string status = await session.WalkTree("Root");
 
                 Assert.AreEqual("RanToCompletion", status,
-                    "Expected WalkTree to complete successfully with ServiceProvider resolving MultipleDependencyAction.");
+                    "Expected WalkTree to complete successfully with ServiceProviderActionFactory resolving MultipleDependencyAction.");
 
                 ActionResponse response = await session.GetLastActionResponseAsync();
                 Assert.AreEqual("MultiDep", response.Status,
@@ -286,10 +284,10 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
         [TestMethod]
         public async Task TestServiceProviderFactory_ParallelActions_WalkTree_Success()
         {
-            // Test - WalkTree with two parallel actions on the same node, both resolved via ServiceProvider.
+            // Test - WalkTree with two parallel actions on the same node, both resolved via ServiceProviderActionFactory.
             using (var sp = BuildServiceProvider("Parallel"))
             {
-                var session = CreateSession(ParallelDependencyActionsSchema, serviceProvider: sp);
+                var session = CreateSession(ParallelDependencyActionsSchema, actionFactory: new ServiceProviderActionFactory(sp));
                 string status = await session.WalkTree("Root");
 
                 Assert.AreEqual("RanToCompletion", status,
@@ -311,7 +309,7 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
             // Test - WalkTree with a DI-resolved action that also uses a typed ActionInput.
             using (var sp = BuildServiceProvider("WithInput"))
             {
-                var session = CreateSession(DiActionWithInputTypeSchema, serviceProvider: sp);
+                var session = CreateSession(DiActionWithInputTypeSchema, actionFactory: new ServiceProviderActionFactory(sp));
                 string status = await session.WalkTree("Root");
 
                 Assert.AreEqual("RanToCompletion", status,
@@ -330,7 +328,7 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
             // Test - WalkTree across multiple nodes, each with DI-resolved actions.
             using (var sp = BuildServiceProvider("MultiNode"))
             {
-                var session = CreateSession(MultiNodeDiSchema, serviceProvider: sp);
+                var session = CreateSession(MultiNodeDiSchema, actionFactory: new ServiceProviderActionFactory(sp));
                 string status = await session.WalkTree("Root");
 
                 Assert.AreEqual("RanToCompletion", status,
@@ -352,7 +350,7 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
             // Test - WalkTree where a DI-resolved action's response drives ChildSelector evaluation.
             using (var sp = BuildServiceProvider("Selector"))
             {
-                var session = CreateSession(DiActionWithChildSelectorSchema, serviceProvider: sp);
+                var session = CreateSession(DiActionWithChildSelectorSchema, actionFactory: new ServiceProviderActionFactory(sp));
                 string status = await session.WalkTree("Root");
 
                 Assert.AreEqual("RanToCompletion", status,
@@ -365,39 +363,20 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
         }
 
         [TestMethod]
-        public void TestServiceProviderFactory_CreateAction_DirectlyRegisteredAction()
+        public void TestServiceProviderFactory_CreateAction_ResolvesViaActivatorUtilities()
         {
-            // Test - When an action type is registered directly in the DI container, ServiceProviderActionFactory resolves it.
+            // Test - ServiceProviderActionFactory always uses ActivatorUtilities.CreateInstance to resolve actions,
+            //        injecting registered dependencies via constructor injection.
             var services = new ServiceCollection();
-            var expectedService = new DiTestService("Direct");
-            services.AddSingleton<IDiTestService>(expectedService);
-            services.AddTransient<SingleDependencyAction>();
-
-            using (var sp = services.BuildServiceProvider())
-            {
-                var factory = new ServiceProviderActionFactory(sp);
-                var action = factory.CreateAction(typeof(SingleDependencyAction), null);
-
-                Assert.IsNotNull(action, "Expected factory to resolve directly registered action.");
-                Assert.IsInstanceOfType(action, typeof(SingleDependencyAction));
-            }
-        }
-
-        [TestMethod]
-        public void TestServiceProviderFactory_CreateAction_FallsBackToActivatorUtilities()
-        {
-            // Test - When an action type is NOT registered but its dependencies are, ActivatorUtilities resolves it.
-            var services = new ServiceCollection();
-            services.AddSingleton<IDiTestService>(new DiTestService("Fallback"));
+            services.AddSingleton<IDiTestService>(new DiTestService("Resolved"));
             services.AddSingleton<IDiTestCounter, DiTestCounter>();
-            // MultipleDependencyAction is NOT registered - only its dependencies are.
 
             using (var sp = services.BuildServiceProvider())
             {
                 var factory = new ServiceProviderActionFactory(sp);
                 var action = factory.CreateAction(typeof(MultipleDependencyAction), null);
 
-                Assert.IsNotNull(action, "Expected factory to fall back to ActivatorUtilities and resolve the action.");
+                Assert.IsNotNull(action, "Expected factory to resolve the action via ActivatorUtilities.");
                 Assert.IsInstanceOfType(action, typeof(MultipleDependencyAction));
             }
         }
@@ -461,23 +440,22 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
         }
 
         [TestMethod]
-        public async Task TestCustomFactory_TakesPrecedenceOverServiceProvider()
+        public async Task TestCustomFactory_OverridesDefaultFactory()
         {
-            // Test - When both ActionFactory and ServiceProvider are set, ActionFactory takes precedence.
+            // Test - When ActionFactory is set, it is used instead of the DefaultForgeActionFactory.
             var testService = new DiTestService("FactoryWins");
             var customFactory = new TestCustomActionFactory(testService);
 
-            using (var sp = BuildServiceProvider("ServiceProviderValue"))
-            {
-                var session = CreateSession(SingleDependencySchema, serviceProvider: sp, actionFactory: customFactory);
-                string status = await session.WalkTree("Root");
+            var session = CreateSession(SingleDependencySchema, actionFactory: customFactory);
+            string status = await session.WalkTree("Root");
 
-                Assert.AreEqual("RanToCompletion", status);
+            Assert.AreEqual("RanToCompletion", status);
 
-                ActionResponse response = await session.GetLastActionResponseAsync();
-                Assert.AreEqual("FactoryWins", response.Output,
-                    "Expected ActionFactory to take precedence over ServiceProvider. Output should come from the custom factory's service, not the ServiceProvider's.");
-            }
+            ActionResponse response = await session.GetLastActionResponseAsync();
+            Assert.AreEqual("FactoryWins", response.Output,
+                "Expected custom ActionFactory to be used instead of DefaultForgeActionFactory.");
+            Assert.IsTrue(customFactory.CreateActionCallCount > 0,
+                "Expected custom ActionFactory.CreateAction to have been called.");
         }
 
         [TestMethod]
@@ -500,29 +478,12 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
 
         #endregion Custom ActionFactory Tests
 
-        #region Factory Priority / Fallback Tests
+        #region Factory Fallback Tests
 
         [TestMethod]
-        public async Task TestFactoryPriority_ServiceProviderOnly_CreatesServiceProviderActionFactory()
+        public async Task TestFactoryFallback_NoFactorySet_UsesDefaultFactory()
         {
-            // Test - When only ServiceProvider is set, Forge internally creates a ServiceProviderActionFactory.
-            using (var sp = BuildServiceProvider("SPOnly"))
-            {
-                var session = CreateSession(SingleDependencySchema, serviceProvider: sp);
-                string status = await session.WalkTree("Root");
-
-                Assert.AreEqual("RanToCompletion", status,
-                    "Expected Forge to auto-create ServiceProviderActionFactory from ServiceProvider and resolve actions.");
-
-                ActionResponse response = await session.GetLastActionResponseAsync();
-                Assert.AreEqual("SPOnly", response.Output);
-            }
-        }
-
-        [TestMethod]
-        public async Task TestFactoryPriority_NeitherSet_UsesDefaultFactory()
-        {
-            // Test - When neither ActionFactory nor ServiceProvider is set, the DefaultForgeActionFactory is used.
+            // Test - When no ActionFactory is set, the DefaultForgeActionFactory is used.
             //        TardigradeAction has a parameterless constructor so it should work.
             string tardigradeOnlySchema = @"
                 {
@@ -545,6 +506,23 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
                 "Expected DefaultForgeActionFactory to resolve TardigradeAction via Activator.CreateInstance.");
         }
 
-        #endregion Factory Priority / Fallback Tests
+        [TestMethod]
+        public async Task TestFactoryFallback_ServiceProviderActionFactory_WalkTree_Success()
+        {
+            // Test - When ActionFactory is explicitly set to a ServiceProviderActionFactory, it resolves actions.
+            using (var sp = BuildServiceProvider("Explicit"))
+            {
+                var session = CreateSession(SingleDependencySchema, actionFactory: new ServiceProviderActionFactory(sp));
+                string status = await session.WalkTree("Root");
+
+                Assert.AreEqual("RanToCompletion", status,
+                    "Expected ServiceProviderActionFactory set via ActionFactory to resolve actions.");
+
+                ActionResponse response = await session.GetLastActionResponseAsync();
+                Assert.AreEqual("Explicit", response.Output);
+            }
+        }
+
+        #endregion Factory Fallback Tests
     }
 }

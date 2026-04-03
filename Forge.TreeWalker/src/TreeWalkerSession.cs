@@ -163,8 +163,7 @@ namespace Microsoft.Forge.TreeWalker
             // Initialize properties from optional TreeWalkerParameters properties.
             GetActionsMapFromAssembly(parameters.ForgeActionsAssembly, out this.actionsMap);
             this.Parameters.ExternalExecutors = parameters.ExternalExecutors ?? new Dictionary<string, Func<string, CancellationToken, Task<object>>>();
-            this.Parameters.ActionFactory = parameters.ActionFactory
-                ?? (parameters.ServiceProvider != null ? new ServiceProviderActionFactory(parameters.ServiceProvider) : (IForgeActionFactory)new DefaultForgeActionFactory());
+            this.Parameters.ActionFactory = parameters.ActionFactory ?? new DefaultForgeActionFactory();
             
             // TODO: Consider using a factory pattern to construct asynchronously.
             this.Parameters.TreeInput = this.GetOrCommitTreeInput(parameters.TreeInput).GetAwaiter().GetResult();
@@ -916,7 +915,6 @@ namespace Microsoft.Forge.TreeWalker
             // Native actions (e.g. SubroutineAction) require TreeWalkerParameters. Handle them here so that
             // custom IForgeActionFactory implementations do not need to know about this internal concern.
             BaseAction actionObject = this.Parameters.ActionFactory.CreateAction(actionDefinition.ActionType, this.Parameters);
-            
 
             MethodInfo method = typeof(BaseAction).GetMethod("RunAction");
             Task<ActionResponse> runActionTask = (Task<ActionResponse>) method.Invoke(actionObject, new object[] { actionContext });

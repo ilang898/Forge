@@ -138,17 +138,9 @@ namespace Microsoft.Forge.TreeWalker
         public bool RetryCurrentTreeNodeActions { get; set; }
 
         /// <summary>
-        /// An optional <see cref="IServiceProvider"/> used to resolve ForgeAction instances via dependency injection using Microsoft.Extensions.DependencyInjection.
-        /// When set and <see cref="ActionFactory"/> is null, Forge will automatically create a <see cref="ServiceProviderActionFactory"/>
-        /// backed by this provider. This removes the need for callers to instantiate the factory themselves.
-        /// </summary>
-        public IServiceProvider ServiceProvider { get; set; }
-
-        /// <summary>
         /// The factory used to create ForgeAction instances.
         /// Implement <see cref="IForgeActionFactory"/> to integrate a dependency injection container of your choice.
-        /// When null and <see cref="ServiceProvider"/> is set, Forge will use a <see cref="ServiceProviderActionFactory"/>.
-        /// When both are null, Forge will use the <see cref="DefaultForgeActionFactory"/> which creates instances via Activator.CreateInstance.
+        /// When it is null, Forge will use the <see cref="DefaultForgeActionFactory"/> which creates instances via Activator.CreateInstance.
         /// </summary>
         public IForgeActionFactory ActionFactory { get; set; }
 
