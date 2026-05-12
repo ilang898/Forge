@@ -11,6 +11,8 @@ resources:
 variables:
 - name: WindowsContainerImage
   value: onebranch.azurecr.io/windows/ltsc2019/vse2022:latest
+- name: Guardian.SourceDirectory
+  value: '$(Build.ArtifactStagingDirectory)\clean'
 
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@onebranchTemplates
@@ -168,6 +170,16 @@ extends:
             SessionTimeout: '60'
             MaxConcurrency: '50'
             MaxRetryAttempts: '5'
+        - task: CopyFiles@2
+          displayName: 'Prepare clean folder'
+          inputs:
+            SourceFolder: '$(Build.ArtifactStagingDirectory)'
+            Contents: |
+              **/*.dll
+              **/*.nupkg
+              !**/*.symbols.nupkg
+              !**/gdn-*/**
+            TargetFolder: '$(Build.ArtifactStagingDirectory)\clean'
         - task: NuGetCommand@2
           displayName: 'NuGet push AzureArtifacts'
           inputs:
