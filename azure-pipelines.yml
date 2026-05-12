@@ -147,7 +147,7 @@ extends:
             ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
             signConfigType: 'inlineSignParams'
             FolderPath: '$(Build.SourcesDirectory)\Forge.TreeWalker\bin\Release'
-            Pattern: 'Microsoft.Forge.TreeWalker*.nupkg'
+            Pattern: 'Microsoft.Forge.TreeWalker*.symbols.nupkg'
             inlineOperation: |
               [ 
                   {
