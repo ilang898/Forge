@@ -11,8 +11,6 @@ resources:
 variables:
 - name: WindowsContainerImage
   value: onebranch.azurecr.io/windows/ltsc2019/vse2022:latest
-- name: GDN_CODESIGN_TARGETDIRECTORY
-  value: $(Build.ArtifactStagingDirectory)
 
 
 extends:
@@ -95,7 +93,7 @@ extends:
             ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
             signConfigType: 'inlineSignParams'
             FolderPath: '$(Build.SourcesDirectory)\Forge.TreeWalker\bin\Release'
-            Pattern: 'Microsoft.Forge.TreeWalker.dll'
+            Pattern: '*.dll'
             OpusName: 'Microsoft Forge TreeWalker'
             OpusInfo: 'https://www.github.com/microsoft/forge'
             inlineOperation: |
