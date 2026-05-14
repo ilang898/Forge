@@ -1,0 +1,74 @@
+{
+    "Tree": {
+        "Root": {
+            "Type": "Action",
+            "Actions": {
+                "Root_CollectDiagnosticsAction": {
+                    "Action": "CollectDiagnosticsAction",
+                    "Input": {
+                        "Command": "RunCollectDiagnostics.exe"
+                    },
+                    "OutputBindings": {
+                        "diagStatus": "Status",
+                        "diagStatusCode": "StatusCode",
+                        "diagOutput": "Output"
+                    }
+                }
+            },
+            "ChildSelector": [
+                {
+                    "Label": "DiagnosticsSuccess",
+                    "ShouldSelect": "C#|Vars.diagStatus == \"Success\"",
+                    "Child": "Analyze"
+                },
+                {
+                    "Label": "DiagnosticsFailure",
+                    "Child": "DiagnosticsFailure"
+                }
+            ]
+        },
+        "Analyze": {
+            "Type": "Action",
+            "Actions": {
+                "Analyze_AnalyzeAction": {
+                    "Action": "CollectDiagnosticsAction",
+                    "Input": {
+                        "Command": "C#|\"Analyze --code=\" + Vars.diagStatusCode.ToString()"
+                    },
+                    "OutputBindings": {
+                        "analyzeStatus": "Status",
+                        "analysisResult": "Output"
+                    }
+                }
+            },
+            "ChildSelector": [
+                {
+                    "Label": "AnalysisComplete",
+                    "ShouldSelect": "C#|Vars.analyzeStatus == \"Success\"",
+                    "Child": "AnalysisComplete"
+                },
+                {
+                    "Label": "AnalysisFailure",
+                    "Child": "AnalysisFailure"
+                }
+            ]
+        },
+        "AnalysisComplete": {
+            "Type": "Leaf",
+            "Actions": {
+                "AnalysisComplete_Summary": {
+                    "Action": "LeafNodeSummaryAction",
+                    "Input": {
+                        "Status": "C#|Vars.analyzeStatus"
+                    }
+                }
+            }
+        },
+        "AnalysisFailure": {
+            "Type": "Leaf"
+        },
+        "DiagnosticsFailure": {
+            "Type": "Leaf"
+        }
+    }
+}

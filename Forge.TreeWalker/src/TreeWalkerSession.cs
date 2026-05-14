@@ -13,6 +13,8 @@ namespace Microsoft.Forge.TreeWalker
     using System.Collections;
     using System.Collections.Generic;
     using System.Diagnostics;
+    using System.Dynamic;
+    using System.Linq;
     using System.Reflection;
     using System.Text.RegularExpressions;
     using System.Threading;
@@ -58,6 +60,12 @@ namespace Microsoft.Forge.TreeWalker
         /// Key: <SessionId>_TI
         /// </summary>
         public static string TreeInputSuffix = "TI";
+
+        /// <summary>
+        /// The OutputVars suffix appended to the end of the key in forgeState that maps to the output binding variables.
+        /// Key: <SessionId>_OV
+        /// </summary>
+        public static string OutputVarsSuffix = "OV";
 
         /// <summary>
         /// The PreviousActionResponse suffix appended to the end of the key in forgeState that maps to a previously persisted ActionResponse.
@@ -167,6 +175,9 @@ namespace Microsoft.Forge.TreeWalker
             this.Parameters.TreeInput = this.GetOrCommitTreeInput(parameters.TreeInput).GetAwaiter().GetResult();
 
             this.expressionExecutor = new ExpressionExecutor(this as ITreeSession, parameters.UserContext, parameters.Dependencies, parameters.ScriptCache, this.Parameters.TreeInput);
+
+            // Rehydrate output binding variables from ForgeState if previously persisted.
+            this.RehydrateOutputVars();
 
             if (parameters.RootSessionId == Guid.Empty)
             {
@@ -283,6 +294,18 @@ namespace Microsoft.Forge.TreeWalker
         }
 
         /// <summary>
+        /// Gets the value of a bound output variable by name.
+        /// Variables are populated from TreeAction OutputBindings after actions complete.
+        /// </summary>
+        /// <param name="name">The variable name as defined in OutputBindings.</param>
+        /// <returns>The bound value if it exists, otherwise null.</returns>
+        public object GetVar(string name)
+        {
+            IDictionary<string, object> vars = this.expressionExecutor.GetVars();
+            return vars.TryGetValue(name, out object value) ? value : null;
+        }
+
+        /// <summary>
         /// Signals the WalkTree and VisitNode cancellation token sources to cancel.
         /// </summary>
         public void CancelWalkTree()
@@ -368,7 +391,8 @@ namespace Microsoft.Forge.TreeWalker
                                 this.walkTreeCts.Token,
                                 this.Parameters.TreeName,
                                 this.Parameters.RootSessionId,
-                                this.currentNodeSkipActionContext
+                                this.currentNodeSkipActionContext,
+                                this.GetOutputVarsSnapshot()
                             );
 
                             await this.Parameters.CallbacksV2.AfterVisitNode(treeNodeContext).ConfigureAwait(false);
@@ -703,6 +727,10 @@ namespace Microsoft.Forge.TreeWalker
                 // Exceptions are thrown here if the action hit a timeout, was cancelled, or failed.
                 await completedTask;
             }
+
+            // After all actions on this node have completed, resolve output bindings sequentially.
+            // This is done after all parallel actions complete to avoid thread-safety issues with the shared Vars ExpandoObject.
+            await this.ResolveAllOutputBindingsForNode(treeNode, treeNodeKey).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -1202,6 +1230,317 @@ namespace Microsoft.Forge.TreeWalker
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// After all actions on a node have completed, resolves output bindings for each action that has them.
+        /// This is called sequentially after all parallel actions complete, ensuring thread-safe access to the shared Vars ExpandoObject.
+        /// Also handles continuation responses (timeout/retry-exhaustion) that committed synthetic ActionResponses.
+        /// </summary>
+        /// <param name="treeNode">The TreeNode whose actions have completed.</param>
+        /// <param name="treeNodeKey">The TreeNode's key.</param>
+        private async Task ResolveAllOutputBindingsForNode(TreeNode treeNode, string treeNodeKey)
+        {
+            if (treeNode.Actions == null)
+            {
+                return;
+            }
+
+            bool hasBindings = false;
+
+            foreach (KeyValuePair<string, TreeAction> kvp in treeNode.Actions)
+            {
+                string treeActionKey = kvp.Key;
+                TreeAction treeAction = kvp.Value;
+
+                if (treeAction.OutputBindings == null || treeAction.OutputBindings.Count == 0)
+                {
+                    continue;
+                }
+
+                ActionResponse actionResponse = await this.GetOutputAsync(treeActionKey).ConfigureAwait(false);
+                if (actionResponse != null)
+                {
+                    this.ResolveOutputBindings(treeActionKey, treeAction, actionResponse);
+                    hasBindings = true;
+                }
+            }
+
+            if (hasBindings)
+            {
+                await this.CommitOutputVars().ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Processes output bindings for a TreeAction by resolving dot-paths against the ActionResponse
+        /// and storing the results as named variables on the Vars ExpandoObject.
+        /// </summary>
+        /// <param name="treeActionKey">The TreeAction's key of the action that was executed.</param>
+        /// <param name="treeAction">The TreeAction with optional OutputBindings.</param>
+        /// <param name="actionResponse">The ActionResponse returned from the action.</param>
+        internal void ResolveOutputBindings(string treeActionKey, TreeAction treeAction, ActionResponse actionResponse)
+        {
+            if (treeAction.OutputBindings == null || treeAction.OutputBindings.Count == 0)
+            {
+                return;
+            }
+
+            IDictionary<string, object> vars = this.expressionExecutor.GetVars();
+
+            foreach (KeyValuePair<string, string> binding in treeAction.OutputBindings)
+            {
+                string varName = binding.Key;
+                string dotPath = binding.Value;
+
+                try
+                {
+                    object resolvedValue = ResolveDotPath(actionResponse, dotPath);
+                    vars[varName] = resolvedValue;
+                }
+                catch (Exception e)
+                {
+                    throw new OutputBindingException(
+                        string.Format(
+                            "Failed to resolve output binding. TreeActionKey: {0}, Variable: {1}, DotPath: {2}.",
+                            treeActionKey,
+                            varName,
+                            dotPath),
+                        e);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Resolves a dot-path expression against a root object.
+        /// Supports property access, array indexing (e.g., "Items[0]"), and nested traversal.
+        /// Handles both JObject/JToken (from JSON deserialization) and CLR objects (via reflection).
+        /// </summary>
+        /// <param name="root">The root object to resolve against.</param>
+        /// <param name="path">The dot-path expression (e.g., "Output.Metrics.SuccessRate", "Output.Items[0].Name").</param>
+        /// <returns>The resolved value with its original type.</returns>
+        internal static object ResolveDotPath(object root, string path)
+        {
+            if (root == null)
+            {
+                throw new ArgumentNullException("root", "Cannot resolve dot-path on a null object.");
+            }
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                throw new ArgumentException("Dot-path cannot be null or empty.", "path");
+            }
+
+            object current = root;
+
+            // Split on '.' but respect bracket segments (e.g., "Items[0].Name" => ["Items[0]", "Name"])
+            string[] segments = path.Split('.');
+
+            foreach (string segment in segments)
+            {
+                if (current == null)
+                {
+                    throw new OutputBindingException(
+                        string.Format("Null value encountered while resolving dot-path '{0}' at segment '{1}'.", path, segment));
+                }
+
+                // Check if segment contains array indexing (e.g., "Items[0]")
+                string propertyName = segment;
+                int arrayIndex = -1;
+
+                int bracketStart = segment.IndexOf('[');
+                if (bracketStart >= 0)
+                {
+                    int bracketEnd = segment.IndexOf(']', bracketStart);
+                    if (bracketEnd < 0)
+                    {
+                        throw new OutputBindingException(
+                            string.Format("Malformed array index in dot-path '{0}' at segment '{1}'. Missing closing bracket.", path, segment));
+                    }
+
+                    propertyName = segment.Substring(0, bracketStart);
+                    string indexStr = segment.Substring(bracketStart + 1, bracketEnd - bracketStart - 1);
+                    if (!int.TryParse(indexStr, out arrayIndex))
+                    {
+                        throw new OutputBindingException(
+                            string.Format("Invalid array index '{0}' in dot-path '{1}' at segment '{2}'.", indexStr, path, segment));
+                    }
+
+                    if (arrayIndex < 0)
+                    {
+                        throw new OutputBindingException(
+                            string.Format("Negative array index '{0}' in dot-path '{1}' at segment '{2}'.", arrayIndex, path, segment));
+                    }
+
+                    // Reject trailing text after closing bracket (e.g., "Items[0]foo")
+                    if (bracketEnd < segment.Length - 1)
+                    {
+                        throw new OutputBindingException(
+                            string.Format("Unexpected text after array index in dot-path '{0}' at segment '{1}'.", path, segment));
+                    }
+                }
+
+                // Resolve the property if property name is not empty
+                if (!string.IsNullOrEmpty(propertyName))
+                {
+                    current = ResolveProperty(current, propertyName, path, segment);
+                }
+
+                // Apply array indexing if present
+                if (arrayIndex >= 0)
+                {
+                    current = ResolveArrayIndex(current, arrayIndex, path, segment);
+                }
+            }
+
+            // Unwrap JValue to its underlying .NET type
+            if (current is JValue jValue)
+            {
+                return jValue.Value;
+            }
+
+            return current;
+        }
+
+        /// <summary>
+        /// Resolves a property name on the given object. Handles JObject, JToken, and CLR objects.
+        /// </summary>
+        private static object ResolveProperty(object obj, string propertyName, string fullPath, string segment)
+        {
+            if (obj is JObject jObj)
+            {
+                JToken token = jObj[propertyName];
+                if (token == null)
+                {
+                    throw new OutputBindingException(
+                        string.Format("Property '{0}' not found on JObject while resolving dot-path '{1}'.", propertyName, fullPath));
+                }
+
+                return token;
+            }
+
+            // Try reflection for CLR objects
+            Type objType = obj.GetType();
+            PropertyInfo prop = objType.GetProperty(propertyName);
+            if (prop != null)
+            {
+                return prop.GetValue(obj);
+            }
+
+            // Try as IDictionary<string, object> (e.g., ExpandoObject)
+            if (obj is IDictionary<string, object> dict)
+            {
+                if (dict.TryGetValue(propertyName, out object value))
+                {
+                    return value;
+                }
+            }
+
+            throw new OutputBindingException(
+                string.Format("Property '{0}' not found on type '{1}' while resolving dot-path '{2}'.", propertyName, objType.Name, fullPath));
+        }
+
+        /// <summary>
+        /// Resolves an array index on the given object. Handles JArray, IList, and arrays.
+        /// </summary>
+        private static object ResolveArrayIndex(object obj, int index, string fullPath, string segment)
+        {
+            if (obj is JArray jArray)
+            {
+                if (index < 0 || index >= jArray.Count)
+                {
+                    throw new OutputBindingException(
+                        string.Format("Array index {0} is out of bounds (length: {1}) in dot-path '{2}' at segment '{3}'.", index, jArray.Count, fullPath, segment));
+                }
+
+                return jArray[index];
+            }
+
+            if (obj is IList list)
+            {
+                if (index < 0 || index >= list.Count)
+                {
+                    throw new OutputBindingException(
+                        string.Format("Array index {0} is out of bounds (length: {1}) in dot-path '{2}' at segment '{3}'.", index, list.Count, fullPath, segment));
+                }
+
+                return list[index];
+            }
+
+            throw new OutputBindingException(
+                string.Format("Cannot apply array index to type '{0}' in dot-path '{1}' at segment '{2}'.", obj.GetType().Name, fullPath, segment));
+        }
+
+        /// <summary>
+        /// Persists the current Vars to ForgeState.
+        /// </summary>
+        private async Task CommitOutputVars()
+        {
+            IDictionary<string, object> vars = this.expressionExecutor.GetVars();
+            Dictionary<string, object> snapshot = new Dictionary<string, object>(vars);
+            await this.Parameters.ForgeState.Set<object>(OutputVarsSuffix, snapshot).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Rehydrates Vars from ForgeState if previously persisted.
+        /// </summary>
+        private void RehydrateOutputVars()
+        {
+            try
+            {
+                object persisted = this.Parameters.ForgeState.GetValue<object>(OutputVarsSuffix).GetAwaiter().GetResult();
+                if (persisted != null)
+                {
+                    IDictionary<string, object> vars = this.expressionExecutor.GetVars();
+
+                    if (persisted is JObject jObj)
+                    {
+                        foreach (KeyValuePair<string, JToken> kvp in jObj)
+                        {
+                            // Unwrap JValue to CLR types so Roslyn expressions work correctly
+                            // (e.g., Vars.status == "Success" compares string to string, not JValue to string).
+                            vars[kvp.Key] = UnwrapJToken(kvp.Value);
+                        }
+                    }
+                    else if (persisted is IDictionary<string, object> dict)
+                    {
+                        foreach (KeyValuePair<string, object> kvp in dict)
+                        {
+                            vars[kvp.Key] = kvp.Value is JToken jt ? UnwrapJToken(jt) : kvp.Value;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // No persisted vars; this is fine.
+            }
+        }
+
+        /// <summary>
+        /// Unwraps a JToken to its underlying CLR type.
+        /// JValue becomes string/int/bool/etc, JObject/JArray stay as-is for dynamic access.
+        /// </summary>
+        private static object UnwrapJToken(JToken token)
+        {
+            if (token is JValue jValue)
+            {
+                return jValue.Value;
+            }
+
+            // JObject and JArray support dynamic property access and indexing,
+            // so they work well as-is in Roslyn expressions.
+            return token;
+        }
+
+        /// <summary>
+        /// Gets a snapshot of the current output binding variables.
+        /// </summary>
+        /// <returns>A dictionary of variable names to their bound values, or null if no variables are bound.</returns>
+        internal IDictionary<string, object> GetOutputVarsSnapshot()
+        {
+            IDictionary<string, object> vars = this.expressionExecutor.GetVars();
+            return vars.Count > 0 ? new Dictionary<string, object>(vars) : null;
         }
 
         /// <summary>

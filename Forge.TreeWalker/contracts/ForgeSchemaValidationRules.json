@@ -219,6 +219,14 @@
                 },
                 "ContinuationOnRetryExhaustion": {
                     "type": "boolean"
+                },
+                "OutputBindings": {
+                    "type": "object",
+                    "patternProperties": {
+                        ".*?": {
+                            "type": "string"
+                        }
+                    }
                 }
             },
             "additionalProperties": false,

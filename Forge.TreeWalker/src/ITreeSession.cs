@@ -46,5 +46,13 @@ namespace Microsoft.Forge.TreeWalker
         /// Gets the string context if the actions in the current tree node were skipped, or null if actions were not skipped.
         /// </summary>
         string GetCurrentNodeSkipActionContext();
+
+        /// <summary>
+        /// Gets the value of a bound output variable by name.
+        /// Variables are populated from TreeAction OutputBindings after actions complete.
+        /// </summary>
+        /// <param name="name">The variable name as defined in OutputBindings.</param>
+        /// <returns>The bound value if it exists, otherwise null.</returns>
+        object GetVar(string name);
     }
 }

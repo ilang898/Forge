@@ -163,6 +163,15 @@ namespace Microsoft.Forge.DataContracts
         /// </summary>
         [DataMember]
         public bool ContinuationOnRetryExhaustion { get; set; }
+
+        /// <summary>
+        /// Optional output bindings that extract values from the ActionResponse and bind them to named variables.
+        /// The key is the variable name accessible via Vars in Roslyn expressions (e.g., "Vars.myVar").
+        /// The value is a dot-path into the ActionResponse (e.g., "Status", "Output.PropertyName", "Output.Items[0].Name").
+        /// Bound variables persist for the entire session and are available in subsequent ShouldSelect and Input expressions.
+        /// </summary>
+        [DataMember]
+        public Dictionary<string, string> OutputBindings { get; set; }
     }
 
     /// <summary>

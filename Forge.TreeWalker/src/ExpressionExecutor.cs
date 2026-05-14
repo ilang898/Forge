@@ -13,6 +13,7 @@ namespace Microsoft.Forge.TreeWalker
     using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Collections.Immutable;
+    using System.Dynamic;
     using System.Reflection;
     using System.Threading.Tasks;
     using Microsoft.CodeAnalysis;
@@ -163,7 +164,8 @@ namespace Microsoft.Forge.TreeWalker
                 Assembly mscorlib = typeof(object).Assembly;
                 Assembly systemCore = typeof(System.Linq.Enumerable).Assembly;
                 Assembly cSharpAssembly = typeof(Microsoft.CSharp.RuntimeBinder.CSharpArgumentInfo).Assembly;
-                scriptOptions = scriptOptions.AddReferences(mscorlib, systemCore, cSharpAssembly);
+                Assembly systemDynamic = typeof(System.Dynamic.ExpandoObject).Assembly;
+                scriptOptions = scriptOptions.AddReferences(mscorlib, systemCore, cSharpAssembly, systemDynamic);
 
                 // Add required namespaces.
                 scriptOptions = scriptOptions.AddImports(
@@ -209,6 +211,16 @@ namespace Microsoft.Forge.TreeWalker
         }
 
         /// <summary>
+        /// Gets the Vars ExpandoObject from the CodeGenInputParams.
+        /// This allows the TreeWalkerSession to populate output binding variables.
+        /// </summary>
+        /// <returns>The Vars ExpandoObject as an IDictionary.</returns>
+        public IDictionary<string, object> GetVars()
+        {
+            return (IDictionary<string, object>)this.parameters.Vars;
+        }
+
+        /// <summary>
         /// This class defines the global parameter that will be passed into the Roslyn expression evaluator.
         /// 
         /// TODO: When Creating a Roslyn Script, the entire Assembly that the passed in GlobalsType resides in gets loaded.
@@ -232,6 +244,13 @@ namespace Microsoft.Forge.TreeWalker
             /// For Subroutines, this is evaluated from the SubroutineInput on the schema.
             /// </summary>
             public dynamic TreeInput { get; set; }
+
+            /// <summary>
+            /// The dynamic Vars object that holds output binding variables.
+            /// Variables are populated from TreeAction OutputBindings after actions complete.
+            /// Schema expressions can reference bound variables as Vars.variableName.
+            /// </summary>
+            public dynamic Vars { get; set; } = new ExpandoObject();
         }
 
         /// <summary>

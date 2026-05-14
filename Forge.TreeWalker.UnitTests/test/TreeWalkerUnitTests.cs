@@ -1346,5 +1346,172 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
 
             return new TreeWalkerSession(subroutineParameters);
         }
+
+        #region OutputBindings
+
+        [TestMethod]
+        public void TestOutputBindings_BasicStatus_Success()
+        {
+            // Test - OutputBindings can bind the Status property and use it in ShouldSelect.
+            this.TestInitialize(jsonSchema: ForgeSchemaHelper.OutputBindings_BasicStatus);
+            string actualStatus = this.session.WalkTree("Root").GetAwaiter().GetResult();
+            Assert.AreEqual("RanToCompletion", actualStatus, "Expected WalkTree to run to completion with OutputBindings.");
+
+            // Verify the tree walked to the Success leaf.
+            string currentNode = this.session.GetCurrentTreeNode().GetAwaiter().GetResult();
+            Assert.AreEqual("Success", currentNode, "Expected to reach Success node via OutputBindings ShouldSelect.");
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_OutputProperty_Success()
+        {
+            // Test - OutputBindings can bind the entire Output object.
+            this.TestInitialize(jsonSchema: ForgeSchemaHelper.OutputBindings_OutputProperty);
+            string actualStatus = this.session.WalkTree("Root").GetAwaiter().GetResult();
+            Assert.AreEqual("RanToCompletion", actualStatus, "Expected WalkTree to run to completion.");
+
+            string currentNode = this.session.GetCurrentTreeNode().GetAwaiter().GetResult();
+            Assert.AreEqual("HasOutput", currentNode, "Expected to reach HasOutput node since Output is not null.");
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_CrossNode_Persists()
+        {
+            // Test - Variables bound in one node are accessible in a later node's ShouldSelect.
+            this.TestInitialize(jsonSchema: ForgeSchemaHelper.OutputBindings_CrossNode);
+            string actualStatus = this.session.WalkTree("Root").GetAwaiter().GetResult();
+            Assert.AreEqual("RanToCompletion", actualStatus, "Expected WalkTree to run to completion.");
+
+            string currentNode = this.session.GetCurrentTreeNode().GetAwaiter().GetResult();
+            Assert.AreEqual("BothSuccess", currentNode, "Expected to reach BothSuccess node since both firstStatus and secondStatus are Success.");
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_VarOverwrite_Success()
+        {
+            // Test - A later action can overwrite a variable bound by an earlier action.
+            this.TestInitialize(jsonSchema: ForgeSchemaHelper.OutputBindings_VarOverwrite);
+            string actualStatus = this.session.WalkTree("Root").GetAwaiter().GetResult();
+            Assert.AreEqual("RanToCompletion", actualStatus, "Expected WalkTree to run to completion.");
+
+            string currentNode = this.session.GetCurrentTreeNode().GetAwaiter().GetResult();
+            Assert.AreEqual("Done", currentNode, "Expected to reach Done node since overwritten status is still Success.");
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_UsedInInput_Success()
+        {
+            // Test - Vars can be referenced in Input expressions of subsequent actions.
+            this.TestInitialize(jsonSchema: ForgeSchemaHelper.OutputBindings_UsedInInput);
+            string actualStatus = this.session.WalkTree("Root").GetAwaiter().GetResult();
+            Assert.AreEqual("RanToCompletion", actualStatus, "Expected WalkTree to run to completion.");
+
+            string currentNode = this.session.GetCurrentTreeNode().GetAwaiter().GetResult();
+            Assert.AreEqual("Done", currentNode, "Expected to reach Done node.");
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_GetVarAccessor_Success()
+        {
+            // Test - Session.GetVar() can be used in ShouldSelect expressions as an alternative to Vars.
+            this.TestInitialize(jsonSchema: ForgeSchemaHelper.OutputBindings_GetVarAccessor);
+            string actualStatus = this.session.WalkTree("Root").GetAwaiter().GetResult();
+            Assert.AreEqual("RanToCompletion", actualStatus, "Expected WalkTree to run to completion.");
+
+            string currentNode = this.session.GetCurrentTreeNode().GetAwaiter().GetResult();
+            Assert.AreEqual("Done", currentNode, "Expected to reach Done node via Session.GetVar accessor.");
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_GetVar_ReturnsNull_ForUnboundVariable()
+        {
+            // Test - GetVar returns null for a variable that hasn't been bound.
+            this.TestFromFileInitialize(filePath: TardigradeSchemaPath);
+            object result = this.session.GetVar("nonExistentVar");
+            Assert.IsNull(result, "Expected GetVar to return null for an unbound variable.");
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_ResolveDotPath_Status()
+        {
+            // Test - ResolveDotPath resolves "Status" property from an ActionResponse.
+            ActionResponse response = new ActionResponse { Status = "Success", StatusCode = 200, Output = "TestOutput" };
+            object result = TreeWalkerSession.ResolveDotPath(response, "Status");
+            Assert.AreEqual("Success", result);
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_ResolveDotPath_StatusCode()
+        {
+            // Test - ResolveDotPath resolves "StatusCode" property from an ActionResponse.
+            ActionResponse response = new ActionResponse { Status = "Success", StatusCode = 42, Output = null };
+            object result = TreeWalkerSession.ResolveDotPath(response, "StatusCode");
+            Assert.AreEqual(42, result);
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_ResolveDotPath_Output()
+        {
+            // Test - ResolveDotPath resolves "Output" as the whole object.
+            var outputObj = new { Name = "test", Value = 42 };
+            ActionResponse response = new ActionResponse { Status = "Success", Output = outputObj };
+            object result = TreeWalkerSession.ResolveDotPath(response, "Output");
+            Assert.AreEqual(outputObj, result);
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_ResolveDotPath_NullRoot_Throws()
+        {
+            // Test - ResolveDotPath throws ArgumentNullException on null root.
+            Assert.ThrowsException<ArgumentNullException>(() =>
+            {
+                TreeWalkerSession.ResolveDotPath(null, "Status");
+            });
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_ResolveDotPath_EmptyPath_Throws()
+        {
+            // Test - ResolveDotPath throws ArgumentException on empty path.
+            ActionResponse response = new ActionResponse { Status = "Success" };
+            Assert.ThrowsException<ArgumentException>(() =>
+            {
+                TreeWalkerSession.ResolveDotPath(response, "");
+            });
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_ResolveDotPath_InvalidProperty_Throws()
+        {
+            // Test - ResolveDotPath throws OutputBindingException for a property that doesn't exist.
+            ActionResponse response = new ActionResponse { Status = "Success" };
+            Assert.ThrowsException<OutputBindingException>(() =>
+            {
+                TreeWalkerSession.ResolveDotPath(response, "NonExistentProperty");
+            });
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_WalkTree_FromFile_Success()
+        {
+            // Test - Walk tree using the OutputBindingsSchema.json file.
+            this.TestFromFileInitialize(filePath: "test\\ExampleSchemas\\OutputBindingsSchema.json");
+            string actualStatus = this.session.WalkTree("Root").GetAwaiter().GetResult();
+            Assert.AreEqual("RanToCompletion", actualStatus, "Expected WalkTree to run to completion with OutputBindings schema file.");
+
+            string currentNode = this.session.GetCurrentTreeNode().GetAwaiter().GetResult();
+            Assert.AreEqual("AnalysisComplete", currentNode, "Expected to reach AnalysisComplete node.");
+        }
+
+        [TestMethod]
+        public void TestOutputBindings_NoBindings_WorksNormally()
+        {
+            // Test - Actions without OutputBindings still work (backward compatibility).
+            this.TestFromFileInitialize(filePath: TardigradeSchemaPath);
+            string actualStatus = this.session.WalkTree("Root").GetAwaiter().GetResult();
+            Assert.AreEqual("RanToCompletion", actualStatus, "Expected WalkTree to run to completion without OutputBindings.");
+        }
+
+        #endregion OutputBindings
     }
 }

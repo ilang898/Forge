@@ -10,6 +10,7 @@
 namespace Microsoft.Forge.TreeWalker
 {
     using System;
+    using System.Collections.Generic;
     using System.Threading;
 
     /// <summary>
@@ -61,6 +62,13 @@ namespace Microsoft.Forge.TreeWalker
         public string CurrentNodeSkipActionContext { get; set; }
 
         /// <summary>
+        /// The output binding variables resolved from TreeAction OutputBindings after actions complete.
+        /// Available in AfterVisitNode callbacks. Null in BeforeVisitNode (bindings haven't run yet).
+        /// Callbacks can use this to read bound output values and store them in external tables or state.
+        /// </summary>
+        public IDictionary<string, object> OutputVars { get; private set; }
+
+        /// <summary>
         /// Instantiates an TreeNodeContext object.
         /// </summary>
         /// <param name="sessionId">The Id of this tree walking session.</param>
@@ -73,6 +81,9 @@ namespace Microsoft.Forge.TreeWalker
         /// <param name="currentNodeSkipActionContext">
         /// The string context if the actions in the current tree node should be skipped, or null if actions should not be skipped.
         /// </param>
+        /// <param name="outputVars">
+        /// The output binding variables resolved from TreeAction OutputBindings. Null in BeforeVisitNode.
+        /// </param>
         public TreeNodeContext(
             Guid sessionId,
             string treeNodeKey,
@@ -81,7 +92,8 @@ namespace Microsoft.Forge.TreeWalker
             CancellationToken token,
             string treeName,
             Guid rootSessionId,
-            string currentNodeSkipActionContext)
+            string currentNodeSkipActionContext,
+            IDictionary<string, object> outputVars = null)
         {
             if (sessionId == null) throw new ArgumentNullException("sessionId");
             if (string.IsNullOrWhiteSpace(treeNodeKey)) throw new ArgumentNullException("treeNodeKey");
@@ -97,6 +109,7 @@ namespace Microsoft.Forge.TreeWalker
             this.TreeName = treeName;
             this.RootSessionId = rootSessionId;
             this.CurrentNodeSkipActionContext = currentNodeSkipActionContext;
+            this.OutputVars = outputVars;
         }
     }
 }

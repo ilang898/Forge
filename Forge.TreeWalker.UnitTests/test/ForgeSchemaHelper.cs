@@ -570,5 +570,255 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
                 }
             }
         ";
+
+        #region OutputBindings Schemas
+
+        public const string OutputBindings_BasicStatus = @"
+            {
+                ""Tree"": {
+                    ""Root"": {
+                        ""Type"": ""Action"",
+                        ""Actions"": {
+                            ""Root_CollectDiagnosticsAction"": {
+                                ""Action"": ""CollectDiagnosticsAction"",
+                                ""Input"": {
+                                    ""Command"": ""RunDiagnostics""
+                                },
+                                ""OutputBindings"": {
+                                    ""diagStatus"": ""Status"",
+                                    ""diagStatusCode"": ""StatusCode""
+                                }
+                            }
+                        },
+                        ""ChildSelector"": [
+                            {
+                                ""ShouldSelect"": ""C#|Vars.diagStatus == \""Success\"""",
+                                ""Child"": ""Success""
+                            },
+                            {
+                                ""Child"": ""Failure""
+                            }
+                        ]
+                    },
+                    ""Success"": {
+                        ""Type"": ""Leaf""
+                    },
+                    ""Failure"": {
+                        ""Type"": ""Leaf""
+                    }
+                }
+            }";
+
+        public const string OutputBindings_OutputProperty = @"
+            {
+                ""Tree"": {
+                    ""Root"": {
+                        ""Type"": ""Action"",
+                        ""Actions"": {
+                            ""Root_CollectDiagnosticsAction"": {
+                                ""Action"": ""CollectDiagnosticsAction"",
+                                ""Input"": {
+                                    ""Command"": ""RunDiagnostics""
+                                },
+                                ""OutputBindings"": {
+                                    ""diagOutput"": ""Output""
+                                }
+                            }
+                        },
+                        ""ChildSelector"": [
+                            {
+                                ""ShouldSelect"": ""C#|Vars.diagOutput != null"",
+                                ""Child"": ""HasOutput""
+                            },
+                            {
+                                ""Child"": ""NoOutput""
+                            }
+                        ]
+                    },
+                    ""HasOutput"": {
+                        ""Type"": ""Leaf""
+                    },
+                    ""NoOutput"": {
+                        ""Type"": ""Leaf""
+                    }
+                }
+            }";
+
+        public const string OutputBindings_CrossNode = @"
+            {
+                ""Tree"": {
+                    ""Root"": {
+                        ""Type"": ""Action"",
+                        ""Actions"": {
+                            ""Root_CollectDiagnosticsAction"": {
+                                ""Action"": ""CollectDiagnosticsAction"",
+                                ""Input"": {
+                                    ""Command"": ""RunDiagnostics""
+                                },
+                                ""OutputBindings"": {
+                                    ""firstStatus"": ""Status""
+                                }
+                            }
+                        },
+                        ""ChildSelector"": [
+                            {
+                                ""ShouldSelect"": ""C#|Vars.firstStatus == \""Success\"""",
+                                ""Child"": ""SecondAction""
+                            }
+                        ]
+                    },
+                    ""SecondAction"": {
+                        ""Type"": ""Action"",
+                        ""Actions"": {
+                            ""SecondAction_TardigradeAction"": {
+                                ""Action"": ""TardigradeAction"",
+                                ""OutputBindings"": {
+                                    ""secondStatus"": ""Status""
+                                }
+                            }
+                        },
+                        ""ChildSelector"": [
+                            {
+                                ""ShouldSelect"": ""C#|Vars.firstStatus == \""Success\"" && Vars.secondStatus == \""Success\"""",
+                                ""Child"": ""BothSuccess""
+                            },
+                            {
+                                ""Child"": ""Failure""
+                            }
+                        ]
+                    },
+                    ""BothSuccess"": {
+                        ""Type"": ""Leaf""
+                    },
+                    ""Failure"": {
+                        ""Type"": ""Leaf""
+                    }
+                }
+            }";
+
+        public const string OutputBindings_VarOverwrite = @"
+            {
+                ""Tree"": {
+                    ""Root"": {
+                        ""Type"": ""Action"",
+                        ""Actions"": {
+                            ""Root_CollectDiagnosticsAction"": {
+                                ""Action"": ""CollectDiagnosticsAction"",
+                                ""Input"": {
+                                    ""Command"": ""RunDiagnostics""
+                                },
+                                ""OutputBindings"": {
+                                    ""status"": ""Status""
+                                }
+                            }
+                        },
+                        ""ChildSelector"": [
+                            {
+                                ""ShouldSelect"": ""C#|Vars.status == \""Success\"""",
+                                ""Child"": ""OverwriteAction""
+                            }
+                        ]
+                    },
+                    ""OverwriteAction"": {
+                        ""Type"": ""Action"",
+                        ""Actions"": {
+                            ""OverwriteAction_TardigradeAction"": {
+                                ""Action"": ""TardigradeAction"",
+                                ""OutputBindings"": {
+                                    ""status"": ""Status""
+                                }
+                            }
+                        },
+                        ""ChildSelector"": [
+                            {
+                                ""ShouldSelect"": ""C#|Vars.status == \""Success\"""",
+                                ""Child"": ""Done""
+                            }
+                        ]
+                    },
+                    ""Done"": {
+                        ""Type"": ""Leaf""
+                    }
+                }
+            }";
+
+        public const string OutputBindings_UsedInInput = @"
+            {
+                ""Tree"": {
+                    ""Root"": {
+                        ""Type"": ""Action"",
+                        ""Actions"": {
+                            ""Root_CollectDiagnosticsAction"": {
+                                ""Action"": ""CollectDiagnosticsAction"",
+                                ""Input"": {
+                                    ""Command"": ""FirstCommand""
+                                },
+                                ""OutputBindings"": {
+                                    ""firstOutput"": ""Output""
+                                }
+                            }
+                        },
+                        ""ChildSelector"": [
+                            {
+                                ""Child"": ""UseVarInInput""
+                            }
+                        ]
+                    },
+                    ""UseVarInInput"": {
+                        ""Type"": ""Action"",
+                        ""Actions"": {
+                            ""UseVarInInput_CollectDiagnosticsAction"": {
+                                ""Action"": ""CollectDiagnosticsAction"",
+                                ""Input"": {
+                                    ""Command"": ""C#|\""Process_\"" + Vars.firstOutput.ToString()""
+                                },
+                                ""OutputBindings"": {
+                                    ""secondOutput"": ""Output""
+                                }
+                            }
+                        },
+                        ""ChildSelector"": [
+                            {
+                                ""ShouldSelect"": ""C#|Vars.secondOutput != null"",
+                                ""Child"": ""Done""
+                            }
+                        ]
+                    },
+                    ""Done"": {
+                        ""Type"": ""Leaf""
+                    }
+                }
+            }";
+
+        public const string OutputBindings_GetVarAccessor = @"
+            {
+                ""Tree"": {
+                    ""Root"": {
+                        ""Type"": ""Action"",
+                        ""Actions"": {
+                            ""Root_CollectDiagnosticsAction"": {
+                                ""Action"": ""CollectDiagnosticsAction"",
+                                ""Input"": {
+                                    ""Command"": ""RunDiagnostics""
+                                },
+                                ""OutputBindings"": {
+                                    ""myStatus"": ""Status""
+                                }
+                            }
+                        },
+                        ""ChildSelector"": [
+                            {
+                                ""ShouldSelect"": ""C#|(string)Session.GetVar(\""myStatus\"") == \""Success\"""",
+                                ""Child"": ""Done""
+                            }
+                        ]
+                    },
+                    ""Done"": {
+                        ""Type"": ""Leaf""
+                    }
+                }
+            }";
+
+        #endregion OutputBindings Schemas
     }
 }

@@ -90,4 +90,29 @@ namespace Microsoft.Forge.TreeWalker.ForgeExceptions
         {
         }
     }
+
+    /// <summary>
+    /// Exception thrown when an output binding fails to resolve.
+    /// </summary>
+    public class OutputBindingException : Exception
+    {
+        /// <summary>
+        /// Initializes a new instance of the <see cref="OutputBindingException"/> class.
+        /// </summary>
+        /// <param name="message">The message.</param>
+        public OutputBindingException(string message)
+            : base(message)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="OutputBindingException"/> class.
+        /// </summary>
+        /// <param name="message">The message.</param>
+        /// <param name="inner">The inner exception.</param>
+        public OutputBindingException(string message, Exception inner)
+            : base(message, inner)
+        {
+        }
+    }
 }
