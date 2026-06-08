@@ -1424,7 +1424,7 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
             Assert.AreEqual("RanToCompletion", actualStatus);
 
             string currentNode = this.session.GetCurrentTreeNode().GetAwaiter().GetResult();
-            Assert.AreEqual("Found", currentNode, "Expected all three cache variables to resolve.");
+            Assert.AreEqual("Found", currentNode, "Expected all three string cache variables to resolve correctly.");
         }
 
         [TestMethod]

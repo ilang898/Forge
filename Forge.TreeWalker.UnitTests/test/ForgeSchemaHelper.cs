@@ -744,13 +744,13 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
                     ""Root"": {
                         ""Type"": ""Selection"",
                         ""CacheVars"": {
-                            ""first"": ""C#|10"",
-                            ""second"": ""C#|20"",
-                            ""total"": ""C#|30""
+                            ""greeting"": ""C#|\""hello\"""",
+                            ""target"": ""C#|\""world\"""",
+                            ""suffix"": ""C#|\""!\""""
                         },
                         ""ChildSelector"": [
                             {
-                                ""ShouldSelect"": ""C#|(int)Cache.first + (int)Cache.second == (int)Cache.total"",
+                                ""ShouldSelect"": ""C#|Cache.greeting.ToString() == \""hello\"" && Cache.target.ToString() == \""world\"" && Cache.suffix.ToString() == \""!\"""",
                                 ""Child"": ""Found""
                             },
                             {
