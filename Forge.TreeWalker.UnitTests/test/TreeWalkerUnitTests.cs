@@ -1465,36 +1465,64 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
         }
 
         [TestMethod]
+        public void TestCacheVars_SchemaValidationPattern_EvaluatesWithoutError()
+        {
+            // Test - Demonstrates a safety-check pattern a caller can run to confirm a TreeNode is properly using CacheVars.
+            //        By evaluating the node's CacheVars into the Cache and then evaluating each ShouldSelect expression,
+            //        we confirm the CacheVars and ShouldSelect statements evaluate without issue - i.e. they reference the
+            //        named properties correctly. A misnamed/invalid property reference would throw here.
+            this.TestInitialize(jsonSchema: ForgeSchemaHelper.CacheVars_Multiple);
+
+            TreeNode node = this.session.Schema.Tree["Root"];
+
+            // Evaluate the node's CacheVars into the Cache, mirroring how the TreeWalker primes the Cache before SelectChild.
+            this.session.SetCache(node.CacheVars).GetAwaiter().GetResult();
+
+            // Evaluate each ShouldSelect expression as a bool, confirming they reference the cached named properties correctly.
+            foreach (ChildSelector cs in node.ChildSelector)
+            {
+                if (string.IsNullOrEmpty(cs.ShouldSelect))
+                {
+                    // Empty ShouldSelect defaults to true during SelectChild, so there is nothing to evaluate.
+                    continue;
+                }
+
+                object result = this.session.EvaluateDynamicProperty(cs.ShouldSelect, typeof(bool)).GetAwaiter().GetResult();
+                Assert.IsInstanceOfType(result, typeof(bool), "Expected ShouldSelect to evaluate to a bool without error.");
+            }
+        }
+
+        [TestMethod]
         public void TestCacheVars_ObjectValue()
         {
-            // Test - CacheVars can store an object (ActionResponse) and access it in ShouldSelect.
+            // Test - CacheVars can store an object (ActionResponse) and access its properties in ShouldSelect.
             this.TestInitialize(jsonSchema: ForgeSchemaHelper.CacheVars_ObjectValue);
 
             string actualStatus = this.session.WalkTree("Root").GetAwaiter().GetResult();
             Assert.AreEqual("RanToCompletion", actualStatus);
 
             string currentNode = this.session.GetCurrentTreeNode().GetAwaiter().GetResult();
-            Assert.AreEqual("Found", currentNode, "Expected Cache.response to not be null.");
+            Assert.AreEqual("Found", currentNode, "Expected Cache.response.Status == 'Success' and Cache.response.Output == 'TheCommand_Results'.");
         }
 
         [TestMethod]
         public void TestCacheVars_BooleanExpression()
         {
-            // Test - CacheVars with boolean value used directly in ShouldSelect.
+            // Test - CacheVars boolean value evaluated from an action result (Status == "Success") used directly in ShouldSelect.
             this.TestInitialize(jsonSchema: ForgeSchemaHelper.CacheVars_BooleanExpression);
 
             string actualStatus = this.session.WalkTree("Root").GetAwaiter().GetResult();
             Assert.AreEqual("RanToCompletion", actualStatus);
 
             string currentNode = this.session.GetCurrentTreeNode().GetAwaiter().GetResult();
-            Assert.AreEqual("Ready", currentNode, "Expected Cache.IsReady == true to route to Ready.");
+            Assert.AreEqual("Ready", currentNode, "Expected Cache.IsSuccess == true to route to Ready.");
         }
 
         [TestMethod]
         public void TestCacheVars_AllNodeTypes()
         {
-            // Test - CacheVars works on Selection and Action node types.
-            this.TestInitialize(jsonSchema: ForgeSchemaHelper.CacheVars_AllNodeTypes);
+            // Test - CacheVars works on Selection, Action, and Subroutine node types.
+            this.TestSubroutineInitialize(jsonSchema: ForgeSchemaHelper.CacheVars_AllNodeTypes, treeName: "RootTree");
 
             string actualStatus = this.session.WalkTree("Root").GetAwaiter().GetResult();
             Assert.AreEqual("RanToCompletion", actualStatus);

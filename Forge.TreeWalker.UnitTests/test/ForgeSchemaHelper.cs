@@ -691,11 +691,11 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
                     ""SecondNode"": {
                         ""Type"": ""Selection"",
                         ""CacheVars"": {
-                            ""secondNodeCheck"": ""C#|Cache == null ? \""isolated\"" : \""leaked\""""
+                            ""secondNodeVar"": ""C#|\""present\""""
                         },
                         ""ChildSelector"": [
                             {
-                                ""ShouldSelect"": ""C#|Cache.secondNodeCheck == \""isolated\"""",
+                                ""ShouldSelect"": ""C#|Cache.secondNodeVar == \""present\"" && Cache.firstNodeVar == null"",
                                 ""Child"": ""Isolated""
                             },
                             {
@@ -750,7 +750,7 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
                         },
                         ""ChildSelector"": [
                             {
-                                ""ShouldSelect"": ""C#|Cache.greeting.ToString() == \""hello\"" && Cache.target.ToString() == \""world\"" && Cache.suffix.ToString() == \""!\"""",
+                                ""ShouldSelect"": ""C#|Cache.greeting == \""hello\"" && Cache.target == \""world\"" && Cache.suffix == \""!\"""",
                                 ""Child"": ""Found""
                             },
                             {
@@ -780,7 +780,7 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
                         },
                         ""ChildSelector"": [
                             {
-                                ""ShouldSelect"": ""C#|Cache.literal.ToString() == \""hello world\"""",
+                                ""ShouldSelect"": ""C#|Cache.literal == \""hello world\"""",
                                 ""Child"": ""Found""
                             },
                             {
@@ -818,7 +818,7 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
                         },
                         ""ChildSelector"": [
                             {
-                                ""ShouldSelect"": ""C#|Cache.response != null"",
+                                ""ShouldSelect"": ""C#|Cache.response.Status == \""Success\"" && Cache.response.Output == \""TheCommand_Results\"""",
                                 ""Child"": ""Found""
                             },
                             {
@@ -836,19 +836,27 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
             }";
 
         /// <summary>
-        /// CacheVars with boolean expression — use Cache.IsReady in ShouldSelect.
+        /// CacheVars with boolean expression — IsReady is evaluated from an action result, then used in ShouldSelect.
         /// </summary>
         public const string CacheVars_BooleanExpression = @"
             {
                 ""Tree"": {
                     ""Root"": {
-                        ""Type"": ""Selection"",
+                        ""Type"": ""Action"",
+                        ""Actions"": {
+                            ""Root_CollectDiagnosticsAction"": {
+                                ""Action"": ""CollectDiagnosticsAction"",
+                                ""Input"": {
+                                    ""Command"": ""TheCommand""
+                                }
+                            }
+                        },
                         ""CacheVars"": {
-                            ""IsReady"": ""C#|true""
+                            ""IsSuccess"": ""C#|Session.GetOutput(\""Root_CollectDiagnosticsAction\"").Status == \""Success\""""
                         },
                         ""ChildSelector"": [
                             {
-                                ""ShouldSelect"": ""C#|(bool)Cache.IsReady"",
+                                ""ShouldSelect"": ""C#|(bool)Cache.IsSuccess"",
                                 ""Child"": ""Ready""
                             },
                             {
@@ -866,54 +874,88 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
             }";
 
         /// <summary>
-        /// CacheVars on multiple node types — Selection and Action.
+        /// CacheVars on multiple node types — Selection, Action, and Subroutine.
+        /// Multi-tree dictionary schema (RootTree + SubroutineTree); initialize via TestSubroutineInitialize.
         /// </summary>
         public const string CacheVars_AllNodeTypes = @"
             {
-                ""Tree"": {
-                    ""Root"": {
-                        ""Type"": ""Selection"",
-                        ""CacheVars"": {
-                            ""nodeType"": ""C#|\""selection\""""
-                        },
-                        ""ChildSelector"": [
-                            {
-                                ""ShouldSelect"": ""C#|Cache.nodeType.ToString() == \""selection\"""",
-                                ""Child"": ""ActionNode""
+                ""RootTree"": {
+                    ""Tree"": {
+                        ""Root"": {
+                            ""Type"": ""Selection"",
+                            ""CacheVars"": {
+                                ""nodeType"": ""C#|\""selection\""""
                             },
-                            {
-                                ""Child"": ""End""
-                            }
-                        ]
-                    },
-                    ""ActionNode"": {
-                        ""Type"": ""Action"",
-                        ""Actions"": {
-                            ""ActionNode_CollectDiagnosticsAction"": {
-                                ""Action"": ""CollectDiagnosticsAction"",
-                                ""Input"": {
-                                    ""Command"": ""TheCommand""
+                            ""ChildSelector"": [
+                                {
+                                    ""ShouldSelect"": ""C#|Cache.nodeType == \""selection\"""",
+                                    ""Child"": ""ActionNode""
+                                },
+                                {
+                                    ""Child"": ""Fail""
                                 }
-                            }
+                            ]
                         },
-                        ""CacheVars"": {
-                            ""nodeType"": ""C#|\""action\""""
-                        },
-                        ""ChildSelector"": [
-                            {
-                                ""ShouldSelect"": ""C#|Cache.nodeType.ToString() == \""action\"""",
-                                ""Child"": ""End""
+                        ""ActionNode"": {
+                            ""Type"": ""Action"",
+                            ""Actions"": {
+                                ""ActionNode_CollectDiagnosticsAction"": {
+                                    ""Action"": ""CollectDiagnosticsAction"",
+                                    ""Input"": {
+                                        ""Command"": ""TheCommand""
+                                    }
+                                }
                             },
-                            {
-                                ""Child"": ""Fail""
-                            }
-                        ]
-                    },
-                    ""End"": {
-                        ""Type"": ""Leaf""
-                    },
-                    ""Fail"": {
-                        ""Type"": ""Leaf""
+                            ""CacheVars"": {
+                                ""nodeType"": ""C#|\""action\""""
+                            },
+                            ""ChildSelector"": [
+                                {
+                                    ""ShouldSelect"": ""C#|Cache.nodeType == \""action\"""",
+                                    ""Child"": ""SubroutineNode""
+                                },
+                                {
+                                    ""Child"": ""Fail""
+                                }
+                            ]
+                        },
+                        ""SubroutineNode"": {
+                            ""Type"": ""Subroutine"",
+                            ""Actions"": {
+                                ""SubroutineNode_Subroutine"": {
+                                    ""Action"": ""SubroutineAction"",
+                                    ""Input"": {
+                                        ""TreeName"": ""SubroutineTree"",
+                                        ""TreeInput"": ""TestValue""
+                                    }
+                                }
+                            },
+                            ""CacheVars"": {
+                                ""nodeType"": ""C#|\""subroutine\""""
+                            },
+                            ""ChildSelector"": [
+                                {
+                                    ""ShouldSelect"": ""C#|Cache.nodeType == \""subroutine\"""",
+                                    ""Child"": ""End""
+                                },
+                                {
+                                    ""Child"": ""Fail""
+                                }
+                            ]
+                        },
+                        ""End"": {
+                            ""Type"": ""Leaf""
+                        },
+                        ""Fail"": {
+                            ""Type"": ""Leaf""
+                        }
+                    }
+                },
+                ""SubroutineTree"": {
+                    ""Tree"": {
+                        ""Root"": {
+                            ""Type"": ""Leaf""
+                        }
                     }
                 }
             }";
@@ -931,7 +973,7 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
                         },
                         ""ChildSelector"": [
                             {
-                                ""ShouldSelect"": ""C#|Cache.status.ToString() == \""first\"""",
+                                ""ShouldSelect"": ""C#|Cache.status == \""first\"""",
                                 ""Child"": ""SecondNode""
                             },
                             {
@@ -946,7 +988,7 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
                         },
                         ""ChildSelector"": [
                             {
-                                ""ShouldSelect"": ""C#|Cache.status.ToString() == \""second\"""",
+                                ""ShouldSelect"": ""C#|Cache.status == \""second\"""",
                                 ""Child"": ""End""
                             },
                             {
@@ -958,6 +1000,28 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
                         ""Type"": ""Leaf""
                     },
                     ""Fail"": {
+                        ""Type"": ""Leaf""
+                    }
+                }
+            }";
+
+        /// <summary>
+        /// Invalid schema — CacheVars is a string instead of a dictionary/object.
+        /// Expected to fail ForgeSchemaValidationRules (CacheVars must be an object).
+        /// </summary>
+        public const string CacheVars_InvalidType_NotADictionary = @"
+            {
+                ""Tree"": {
+                    ""Root"": {
+                        ""Type"": ""Selection"",
+                        ""CacheVars"": ""UnexpectedStringNotADictionary"",
+                        ""ChildSelector"": [
+                            {
+                                ""Child"": ""End""
+                            }
+                        ]
+                    },
+                    ""End"": {
                         ""Type"": ""Leaf""
                     }
                 }

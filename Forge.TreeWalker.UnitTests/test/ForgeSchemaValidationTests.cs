@@ -53,6 +53,13 @@ namespace Microsoft.Forge.TreeWalker.UnitTests
                     {
                         "RootTree"
                     }
+                },
+                {
+                    nameof(ForgeSchemaHelper.CacheVars_InvalidType_NotADictionary),
+                    new List<string>
+                    {
+                        "NA"
+                    }
                 }
             };
         }
